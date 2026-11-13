@@ -78,7 +78,7 @@ body {
   display: flex;
   align-items: center;
   gap: 10px;
-  height: 64px;
+  min-height: 64px;
   padding: 0 14px 0 8px;
   background: var(--island-bg);
   border: 1px solid var(--island-border);
@@ -137,7 +137,7 @@ body {
 .bubble {
   /* Bublina je mimo tok rozlozeni: nezatlačí lištu, prekryje ji jen mirne. */
   position: absolute;
-  top: 74px;
+  top: 96px;
   left: 70px;
   z-index: 1;
   max-width: 360px;
@@ -163,8 +163,9 @@ body {
 }
 
 .buddies canvas {
-  width: 40px;
-  height: 46px;
+  /* velikost ovlada uzivatel posuvnikem v nastaveni (--pet-scale) */
+  width: calc(54px * var(--pet-scale, 1.3));
+  height: calc(62px * var(--pet-scale, 1.3));
   image-rendering: pixelated;
   border-radius: 10px;
   cursor: pointer;
@@ -198,7 +199,7 @@ body {
 /* Panel nastaveni pod listou */
 .settings {
   position: absolute;
-  top: 74px;
+  top: 96px;
   left: 0;
   right: 0;
   z-index: 2;
@@ -213,7 +214,7 @@ body {
   border: 1px solid var(--island-border);
   border-radius: var(--radius);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
-  max-height: 290px;
+  max-height: 380px;
   overflow-y: auto;
   user-select: text;
 }
@@ -264,4 +265,15 @@ body {
 
 .settings button {
   cursor: pointer;
+}
+
+.settings-row-inline {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.settings-row-inline input[type="range"] {
+  flex: 1;
+  accent-color: var(--accent);
 }

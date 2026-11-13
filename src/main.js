@@ -297,6 +297,21 @@ function setProvider(buddyId, name) {
   return buddy.provider;
 }
 
+// --- Velikost mazlicku (posuvnik v nastaveni) -------------------------------
+const PET_SCALE_KEY = "buddybay.petScale";
+
+function petScale() {
+  const v = Number(storageGet(PET_SCALE_KEY));
+  return Number.isFinite(v) && v >= 0.8 && v <= 2 ? v : 1.3;
+}
+
+function applyPetScale(v) {
+  document.documentElement.style.setProperty("--pet-scale", String(v));
+  storageSet(PET_SCALE_KEY, String(v));
+}
+
+applyPetScale(petScale());
+
 // --- Nastaveni (panel) -------------------------------------------------------
 const settingsBtn = document.getElementById("settings-btn");
 const settingsEl = document.getElementById("settings");
@@ -367,7 +382,23 @@ function renderSettings() {
     } },
   });
 
+  const scaleValue = petScale();
+  const scaleLabel = el("span", { text: `${Math.round(scaleValue * 100)} %` });
+  const scaleSlider = el("input", {
+    type: "range", min: "0.8", max: "2", step: "0.05", value: String(scaleValue),
+    "aria-label": "Velikost mazlíčků",
+    on: { input: (e) => {
+      const v = Number(e.target.value);
+      scaleLabel.textContent = `${Math.round(v * 100)} %`;
+      applyPetScale(v);
+    } },
+  });
+
   settingsEl.replaceChildren(
+    el("div", { className: "settings-section" }, [
+      el("label", { text: "Velikost mazlíčků" }),
+      el("div", { className: "settings-row-inline" }, [scaleSlider, scaleLabel]),
+    ]),
     el("div", { className: "settings-section" }, [el("label", { text: "Skin" }), skinSelect]),
     el("div", { className: "settings-section" }, [
       el("label", { text: selected ? `Model pro ${selected.name}` : "Model (vyber buddy)" }),
@@ -402,8 +433,8 @@ settingsBtn.addEventListener("click", toggleSettings);
 // --- Schovavani na okraj -----------------------------------------------------
 // Okno se meni pres capability core:window:allow-set-size.
 const WINDOW_W = 460;
-const EXPANDED_H = 120;
-const SETTINGS_H = 300;
+const EXPANDED_H = 150;
+const SETTINGS_H = 480;
 const COLLAPSED_H = 24;
 const COLLAPSE_DELAY_MS = 1500;
 
