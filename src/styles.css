@@ -39,6 +39,41 @@ body {
   padding-top: 4px;
 }
 
+/* Sbaleny stav: jen uzka listicka nahore, panel vyjede nahoru mimo okno */
+.island {
+  transition: none;
+}
+
+.island .bar {
+  transition: transform 180ms ease, opacity 180ms ease;
+}
+
+.island.collapsed .bar,
+.island.collapsed .bubble {
+  transform: translateY(-80%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.island::after {
+  content: "";
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  width: 56px;
+  height: 4px;
+  margin-left: -28px;
+  border-radius: 2px;
+  background: var(--muted);
+  opacity: 0;
+  transition: opacity 180ms ease;
+  pointer-events: none;
+}
+
+.island.collapsed::after {
+  opacity: 0.7;
+}
+
 .bar {
   display: flex;
   align-items: center;

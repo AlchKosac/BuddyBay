@@ -119,5 +119,48 @@ window.addEventListener("keydown", (e) => {
   }
 });
 
+// --- Schovavani na okraj -----------------------------------------------------
+// Pri odchodu kurzoru se ostrov sbali na uzkou listu nahore; po najeti se rozbali.
+// Zmena velikosti okna vyzaduje capability core:window:allow-set-size.
+const WINDOW_W = 460;
+const EXPANDED_H = 120;
+const COLLAPSED_H = 24;
+const COLLAPSE_DELAY_MS = 1500;
+
+const island = document.getElementById("island");
+const appWindow = window.__TAURI__?.window?.getCurrentWindow?.() ?? null;
+const LogicalSizeCtor = window.__TAURI__?.window?.LogicalSize ?? null;
+let collapsed = false;
+let collapseTimer = null;
+
+async function setCollapsed(next) {
+  if (collapsed === next) return;
+  collapsed = next;
+  island.classList.toggle("collapsed", next);
+  if (appWindow && LogicalSizeCtor) {
+    try {
+      await appWindow.setSize(new LogicalSizeCtor(WINDOW_W, next ? COLLAPSED_H : EXPANDED_H));
+    } catch (_) { /* okno jen zustane rozbalene */ }
+  }
+}
+
+island.addEventListener("mouseenter", () => {
+  clearTimeout(collapseTimer);
+  setCollapsed(false);
+});
+
+island.addEventListener("mouseleave", () => {
+  clearTimeout(collapseTimer);
+  collapseTimer = setTimeout(() => {
+    // Nesbalovat, dokud uzivatel pise.
+    if (document.activeElement === input) return;
+    setCollapsed(true);
+  }, COLLAPSE_DELAY_MS);
+});
+
+input.addEventListener("blur", () => {
+  if (!island.matches(":hover")) setCollapsed(true);
+});
+
 // Expose pro pozdejsi napojeni (Tauri invoke / event listener).
 window.buddy = { setPetState, say, setSkin, cycleSkin, currentSkin, SKINS, PET_STATES };
