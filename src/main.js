@@ -22,12 +22,45 @@ const PET_STATES = {
   "look-180-337":    { row: 10, frames: 8 },
 };
 
-// Dalsi mazlicci se pridaji sem (sprite + stavy). Zatim je jen Servo-skull.
+// Dalsi mazlicci se pridaji sem. Kazdy ma vlastni velikost bunky, rozlozeni a
+// rychlost animace (ms na snimek, muze byt u stavu jine). Servo-skull ma 8 sloupcu.
 const PETS = {
   "servo-skull": {
     name: "Servo-skull",
     sheet: "assets/pets/servo-skull/spritesheet.png",
+    cellW: 192,
+    cellH: 208,
     states: PET_STATES,
+  },
+  // Pac-Man: 3D kulaty mazlicek s bělmem a vyrazy, 256 px bunky, 16 sloupcu.
+  // Radky a pocty snimku odpovidaji src/assets/pets/pacman/states.json.
+  "pacman": {
+    name: "Pac-Man",
+    sheet: "assets/pets/pacman/spritesheet.png",
+    cellW: 256,
+    cellH: 256,
+    states: {
+      "idle":       { row: 0,  frames: 12, ms: 90 },
+      "happy":      { row: 1,  frames: 10, ms: 85 },
+      "wink":       { row: 2,  frames: 8,  ms: 95 },
+      "sleepy":     { row: 3,  frames: 8,  ms: 130 },
+      "thinking":   { row: 4,  frames: 8,  ms: 120 },
+      "chomp":      { row: 5,  frames: 8,  ms: 75 },
+      "sad":        { row: 6,  frames: 8,  ms: 130 },
+      "angry":      { row: 7,  frames: 8,  ms: 110 },
+      "tear":       { row: 8,  frames: 8,  ms: 130 },
+      "surprised":  { row: 9,  frames: 10, ms: 80 },
+      "look-sweep": { row: 10, frames: 15, ms: 60 },
+      "look-left":  { row: 11, frames: 8,  ms: 70 },
+      "look-right": { row: 12, frames: 8,  ms: 70 },
+      // Stavy agentu namapovane na vyrazy Pac-Mana.
+      "running":    { row: 5,  frames: 8,  ms: 75 },
+      "waiting":    { row: 3,  frames: 8,  ms: 130 },
+      "review":     { row: 4,  frames: 8,  ms: 120 },
+      "failed":     { row: 6,  frames: 8,  ms: 130 },
+      "waving":     { row: 2,  frames: 8,  ms: 95 },
+      "jumping":    { row: 9,  frames: 10, ms: 80 },
+    },
   },
 };
 
@@ -129,9 +162,11 @@ function drawBuddy(buddy, rt) {
   const def = pet.states[rt.state] ?? pet.states.idle;
   rt.ctx.clearRect(0, 0, rt.canvas.width, rt.canvas.height);
   if (!img || !img.complete || img.naturalWidth === 0) return;
+  const cw = pet.cellW ?? CELL_W;
+  const ch = pet.cellH ?? CELL_H;
   rt.ctx.drawImage(
     img,
-    rt.frame * CELL_W, def.row * CELL_H, CELL_W, CELL_H,
+    rt.frame * cw, def.row * ch, cw, ch,
     0, 0, rt.canvas.width, rt.canvas.height,
   );
 }
@@ -145,8 +180,9 @@ function drawAll() {
 function tick(ts) {
   for (const buddy of activeBuddies()) {
     const rt = ensureRuntime(buddy);
-    if (ts - rt.lastTick >= FRAME_MS) {
-      const def = PETS[buddy.petId].states[rt.state] ?? PETS[buddy.petId].states.idle;
+    const def = PETS[buddy.petId].states[rt.state] ?? PETS[buddy.petId].states.idle;
+    const interval = def.ms ?? FRAME_MS;
+    if (ts - rt.lastTick >= interval) {
       rt.frame = (rt.frame + 1) % def.frames;
       rt.lastTick = ts;
       drawBuddy(buddy, rt);

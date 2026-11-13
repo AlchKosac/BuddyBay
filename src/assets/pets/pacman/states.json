@@ -1,0 +1,72 @@
+{
+  "cellW": 256,
+  "cellH": 256,
+  "cols": 16,
+  "states": {
+    "idle": {
+      "row": 0,
+      "frames": 12,
+      "ms": 90
+    },
+    "happy": {
+      "row": 1,
+      "frames": 10,
+      "ms": 85
+    },
+    "wink": {
+      "row": 2,
+      "frames": 8,
+      "ms": 95
+    },
+    "sleepy": {
+      "row": 3,
+      "frames": 8,
+      "ms": 130
+    },
+    "thinking": {
+      "row": 4,
+      "frames": 8,
+      "ms": 120
+    },
+    "chomp": {
+      "row": 5,
+      "frames": 8,
+      "ms": 75
+    },
+    "sad": {
+      "row": 6,
+      "frames": 8,
+      "ms": 130
+    },
+    "angry": {
+      "row": 7,
+      "frames": 8,
+      "ms": 110
+    },
+    "tear": {
+      "row": 8,
+      "frames": 8,
+      "ms": 130
+    },
+    "surprised": {
+      "row": 9,
+      "frames": 10,
+      "ms": 80
+    },
+    "look-sweep": {
+      "row": 10,
+      "frames": 15,
+      "ms": 60
+    },
+    "look-left": {
+      "row": 11,
+      "frames": 8,
+      "ms": 70
+    },
+    "look-right": {
+      "row": 12,
+      "frames": 8,
+      "ms": 70
+    }
+  }
+}
