@@ -427,6 +427,25 @@ function toggleDemo() {
   renderSettings();
 }
 
+// --- Ukonceni a spousteni s Windows ------------------------------------------
+let autostartOn = false;
+
+async function refreshAutostart() {
+  if (!invoke) return;
+  try {
+    autostartOn = await invoke("get_autostart");
+    if (settingsOpen) renderSettings();
+  } catch (_) { /* bez zapisu zustane vypnuto */ }
+}
+
+function quitApp() {
+  if (invoke) {
+    invoke("quit_app").catch(() => window.close());
+  } else {
+    window.close();
+  }
+}
+
 // --- Nastaveni (panel) -------------------------------------------------------
 const settingsBtn = document.getElementById("settings-btn");
 const settingsEl = document.getElementById("settings");
@@ -617,7 +636,34 @@ function renderSettings() {
     } },
   });
 
+  const quitBtn = el("button", {
+    type: "button", text: "Ukončit", className: "danger", title: "Ukončit BuddyBay",
+    on: { click: quitApp },
+  });
+  const topBar = el("div", { className: "settings-topbar" }, [
+    el("span", { className: "settings-title", text: "Nastavení" }),
+    quitBtn,
+  ]);
+
+  const autostartBox = el("input", {
+    type: "checkbox", checked: autostartOn, "aria-label": "Spouštět s Windows",
+    on: { change: async (e) => {
+      if (!invoke) { e.target.checked = false; say("Bez Tauri runtime nelze nastavit spouštění.", 3000); return; }
+      try {
+        autostartOn = await invoke("set_autostart", { enabled: e.target.checked });
+        say(autostartOn ? "BuddyBay se spustí s Windows" : "Spouštění s Windows vypnuto", 2500);
+      } catch (err) {
+        e.target.checked = autostartOn;
+        say(String(err), 4000);
+      }
+    } },
+  });
+
   settingsEl.replaceChildren(
+    topBar,
+    section("Spouštění",
+      el("label", { className: "check" }, [autostartBox, el("span", { text: "Spouštět s Windows" })]),
+    ),
     section("Skin", skinSelect),
     section("Ostrůvek",
       el("label", { className: "check" }, [autoHideBox, el("span", { text: "Automaticky skrývat" })]),
@@ -712,6 +758,7 @@ window.addEventListener("keydown", (e) => {
 // --- Start -------------------------------------------------------------------
 document.documentElement.style.setProperty("--ui-scale", String(uiScale()));
 applySystemTheme();
+refreshAutostart();
 renderBar();
 applySize();
 requestAnimationFrame(tick);

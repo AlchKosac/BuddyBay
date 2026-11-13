@@ -387,3 +387,25 @@ body {
   width: 100%;
   box-sizing: border-box;
 }
+
+/* Horni lista nastaveni: nazev vlevo, Ukoncit vpravo */
+.settings-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.settings-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.settings button.danger {
+  color: #ff6b6b;
+  border-color: rgba(255, 107, 107, 0.5);
+}
+
+.settings button.danger:hover {
+  background: rgba(255, 107, 107, 0.15);
+}

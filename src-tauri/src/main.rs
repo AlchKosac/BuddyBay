@@ -264,6 +264,67 @@ fn place_top_center(window: &tauri::WebviewWindow) -> tauri::Result<()> {
     Ok(())
 }
 
+const AUTOSTART_NAME: &str = "BuddyBay";
+#[cfg(windows)]
+const RUN_KEY: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
+
+/// Spusti `reg` bez okna konzole.
+#[cfg(windows)]
+fn reg(args: &[&str]) -> std::io::Result<std::process::Output> {
+    use std::os::windows::process::CommandExt;
+    std::process::Command::new("reg")
+        .args(args)
+        .creation_flags(0x0800_0000)
+        .output()
+}
+
+/// Je aplikace nastavena ke spusteni s Windows?
+#[tauri::command]
+fn get_autostart() -> bool {
+    #[cfg(windows)]
+    {
+        return reg(&["query", RUN_KEY, "/v", AUTOSTART_NAME])
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+    }
+    #[cfg(not(windows))]
+    {
+        false
+    }
+}
+
+/// Zapne nebo vypne spusteni s Windows (zapis do HKCU\...\Run).
+#[tauri::command]
+fn set_autostart(enabled: bool) -> Result<bool, String> {
+    #[cfg(windows)]
+    {
+        if enabled {
+            let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+            let quoted = format!("\"{}\"", exe.display());
+            let out = reg(&["add", RUN_KEY, "/v", AUTOSTART_NAME, "/t", "REG_SZ", "/d", &quoted, "/f"])
+                .map_err(|e| e.to_string())?;
+            if !out.status.success() {
+                return Err("Nepodařilo se zapsat do registru".to_string());
+            }
+        } else {
+            // Kdyz zaznam neexistuje, reg vrati chybu; to je v poradku.
+            let _ = reg(&["delete", RUN_KEY, "/v", AUTOSTART_NAME, "/f"]);
+        }
+        Ok(enabled)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = enabled;
+        Err("Spouštění s Windows je dostupné jen ve Windows".to_string())
+    }
+}
+
+/// Ukonci aplikaci (ostrov zmizi).
+#[tauri::command]
+fn quit_app(app: tauri::AppHandle) {
+    app.exit(0);
+}
+
 fn main() {
     tauri::Builder::default()
         .setup(|app| {
@@ -272,7 +333,14 @@ fn main() {
             }
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![ask_agent, list_models, get_system_theme])
+        .invoke_handler(tauri::generate_handler![
+            ask_agent,
+            list_models,
+            get_system_theme,
+            get_autostart,
+            set_autostart,
+            quit_app
+        ])
         .run(tauri::generate_context!())
         .expect("chyba pri spusteni BuddyBay");
 }
