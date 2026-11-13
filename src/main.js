@@ -1,11 +1,9 @@
 // BuddyBay - frontend ostrova.
-// Vice buddy: kazdy ma svuj mazlicek (spritesheet), poskytovatele modelu a stav.
-// Aktivni buddy jsou v liste na liste; zprava jde vybranemu buddy.
+// Vice buddy: kazdy ma svuj mazlicek (spritesheet), model, velikost a stav.
+// Aktivni buddy jsou na liste; zprava jde vybranemu buddy.
 
 // --- Mazlicci ---------------------------------------------------------------
-// Spritesheet v Codex/ChatGPT formatu: 8 sloupcu x 11 radku, bunka 192 x 208 px.
-const CELL_W = 192;
-const CELL_H = 208;
+// Servo-skull: spritesheet 8 sloupcu x 11 radku, bunka 192 x 208 px.
 const FRAME_MS = 140;
 
 const PET_STATES = {
@@ -22,8 +20,8 @@ const PET_STATES = {
   "look-180-337":    { row: 10, frames: 8 },
 };
 
-// Dalsi mazlicci se pridaji sem. Kazdy ma vlastni velikost bunky, rozlozeni a
-// rychlost animace (ms na snimek, muze byt u stavu jine). Servo-skull ma 8 sloupcu.
+// Kazdy mazlicek ma vlastni velikost bunky, rozlozeni a rychlost (ms na snimek).
+// Pac-Man: 256 px bunky, radky a pocty snimku odpovidaji src/assets/pets/pacman/states.json.
 const PETS = {
   "servo-skull": {
     name: "Servo-skull",
@@ -32,8 +30,6 @@ const PETS = {
     cellH: 208,
     states: PET_STATES,
   },
-  // Pac-Man: 3D kulaty mazlicek s bělmem a vyrazy, 256 px bunky, 16 sloupcu.
-  // Radky a pocty snimku odpovidaji src/assets/pets/pacman/states.json.
   "pacman": {
     name: "Pac-Man",
     sheet: "assets/pets/pacman/spritesheet.png",
@@ -65,15 +61,21 @@ const PETS = {
 };
 
 const DEFAULT_PET = "servo-skull";
+const BUDDY_BASE_W = 54;          // sirka v CSS px pri velikosti 100 %
+const BUDDY_SCALE_DEFAULT = 1.3;  // vychozi velikost buddy
+const BUDDY_SCALE_MIN = 0.8;
+const BUDDY_SCALE_MAX = 2;
 
-// --- Skiny a poskytovatele ---------------------------------------------------
+// --- Skiny, poskytovatele, ulozeni -------------------------------------------
 const SKINS = ["brass-radio", "glass-dock", "terminal-pet"];
 const SKIN_KEY = "buddybay.skin";
 const PROVIDERS = ["ollama", "anthropic"];
 const PROVIDER_LABELS = { ollama: "Lokální (Ollama)", anthropic: "Cloud (Claude)" };
 const BUDDIES_KEY = "buddybay.buddies";
+const AUTO_HIDE_KEY = "buddybay.autoHide";
+const UI_SCALE_KEY = "buddybay.uiScale";
+const UI_SCALE_DEFAULT = 1;
 
-// --- Ulozene nastaveni (jen per-viewer, zatim v localStorage) ----------------
 function storageGet(key) {
   try { return localStorage.getItem(key); } catch (_) { return null; }
 }
@@ -84,6 +86,11 @@ function storageSet(key, value) {
 // --- Buddy -------------------------------------------------------------------
 let nextBuddyNumber = 1;
 
+function clampScale(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.min(BUDDY_SCALE_MAX, Math.max(BUDDY_SCALE_MIN, n)) : BUDDY_SCALE_DEFAULT;
+}
+
 function makeBuddy(name) {
   nextBuddyNumber += 1;
   return {
@@ -92,14 +99,14 @@ function makeBuddy(name) {
     name: name || `Buddy ${nextBuddyNumber}`,
     provider: "ollama",
     active: true,
+    scale: BUDDY_SCALE_DEFAULT,
   };
 }
 
 function defaultBuddies() {
-  // Dva mazlicci vedle sebe pro porovnani; dalsi se daji pridat v nastaveni.
   return [
-    { id: "b1", petId: "servo-skull", name: "Servo", provider: "ollama", active: true },
-    { id: "b2", petId: "pacman", name: "Pac-Man", provider: "ollama", active: true },
+    { id: "b1", petId: "servo-skull", name: "Servo", provider: "ollama", active: true, scale: BUDDY_SCALE_DEFAULT },
+    { id: "b2", petId: "pacman", name: "Pac-Man", provider: "ollama", active: true, scale: BUDDY_SCALE_DEFAULT },
   ];
 }
 
@@ -113,6 +120,7 @@ function loadBuddies() {
         name: String(b.name || "Buddy").slice(0, 24),
         provider: PROVIDERS.includes(b.provider) ? b.provider : "ollama",
         active: b.active !== false,
+        scale: clampScale(b.scale),
       }));
     }
   } catch (_) { /* spatne ulozena data -> vychozi */ }
@@ -150,8 +158,6 @@ function ensureRuntime(buddy) {
   let rt = runtime.get(buddy.id);
   if (!rt) {
     const canvas = document.createElement("canvas");
-    canvas.width = 64;
-    canvas.height = 72;
     canvas.title = buddy.name;
     rt = { canvas, ctx: canvas.getContext("2d"), state: "idle", frame: 0, lastTick: 0 };
     canvas.addEventListener("click", () => selectBuddy(buddy.id));
@@ -160,17 +166,32 @@ function ensureRuntime(buddy) {
   return rt;
 }
 
+/** Nastavi vnitrni rozliseni a CSS rozmer podle pomeru stran mazlicka (bez roztahovani). */
+function sizeCanvas(buddy, rt) {
+  const pet = PETS[buddy.petId];
+  const w = 128;                              // vnitrni sirka: ostre vykresleni
+  const h = Math.round(w * pet.cellH / pet.cellW);
+  if (rt.canvas.width !== w || rt.canvas.height !== h) {
+    rt.canvas.width = w;
+    rt.canvas.height = h;
+  }
+  const cssW = BUDDY_BASE_W * buddy.scale;
+  rt.canvas.style.width = `${cssW}px`;
+  rt.canvas.style.height = `${cssW * pet.cellH / pet.cellW}px`;
+  rt.canvas.title = buddy.name;
+}
+
 function drawBuddy(buddy, rt) {
   const pet = PETS[buddy.petId];
   const img = petImages[buddy.petId];
   const def = pet.states[rt.state] ?? pet.states.idle;
   rt.ctx.clearRect(0, 0, rt.canvas.width, rt.canvas.height);
   if (!img || !img.complete || img.naturalWidth === 0) return;
-  const cw = pet.cellW ?? CELL_W;
-  const ch = pet.cellH ?? CELL_H;
+  rt.ctx.imageSmoothingEnabled = true;
+  rt.ctx.imageSmoothingQuality = "high";
   rt.ctx.drawImage(
     img,
-    rt.frame * cw, def.row * ch, cw, ch,
+    rt.frame * pet.cellW, def.row * pet.cellH, pet.cellW, pet.cellH,
     0, 0, rt.canvas.width, rt.canvas.height,
   );
 }
@@ -212,6 +233,7 @@ function renderBar() {
   buddiesEl.replaceChildren();
   for (const buddy of activeBuddies()) {
     const rt = ensureRuntime(buddy);
+    sizeCanvas(buddy, rt);
     rt.canvas.classList.toggle("selected", buddy.id === selectedId);
     buddiesEl.appendChild(rt.canvas);
     drawBuddy(buddy, rt);
@@ -294,7 +316,7 @@ function cycleSkin() {
 const savedSkin = storageGet(SKIN_KEY);
 if (savedSkin) setSkin(savedSkin);
 
-// --- Poskytovatel vybraneho buddy --------------------------------------------
+// --- Poskytovatel konkretniho buddy ------------------------------------------
 function setProvider(buddyId, name) {
   const buddy = findBuddy(buddyId);
   if (!buddy) return null;
@@ -304,47 +326,39 @@ function setProvider(buddyId, name) {
   return buddy.provider;
 }
 
-// --- Velikost mazlicku (posuvnik v nastaveni) -------------------------------
-const PET_SCALE_KEY = "buddybay.petScale";
-
-const PET_SCALE_DEFAULT = 1.3;
-
-function petScale() {
-  const v = Number(storageGet(PET_SCALE_KEY));
-  return Number.isFinite(v) && v >= 0.8 && v <= 2 ? v : PET_SCALE_DEFAULT;
+// --- Automaticke skryvani a velikost ostrovu ---------------------------------
+function autoHide() {
+  return storageGet(AUTO_HIDE_KEY) !== "0";
 }
 
-function applyPetScale(v) {
-  document.documentElement.style.setProperty("--pet-scale", String(v));
-  storageSet(PET_SCALE_KEY, String(v));
+function uiScale() {
+  const v = Number(storageGet(UI_SCALE_KEY));
+  return Number.isFinite(v) && v >= 0.8 && v <= 1.4 ? v : UI_SCALE_DEFAULT;
 }
 
-applyPetScale(petScale());
+function applyUiScale(v) {
+  document.documentElement.style.setProperty("--ui-scale", String(v));
+  storageSet(UI_SCALE_KEY, String(v));
+  applySize();
+}
 
-// --- Demo animaci (smycka vsech stavu) ----------------------------------------
-// Projde postupne vsechny stavy aktivnich mazlicku a bublina ukaze jmeno stavu.
+// --- Demo animaci (kazdy buddy hraje svuj seznam stavu) ----------------------
 const DEMO_STEP_MS = 2400;
 let demoTimer = null;
-let demoIndex = 0;
+let demoStepCount = 0;
 
-function demoStateList() {
-  const names = new Set();
-  for (const buddy of activeBuddies()) {
-    for (const name of Object.keys(PETS[buddy.petId].states)) names.add(name);
+function demoTick() {
+  const active = activeBuddies();
+  if (active.length === 0) return;
+  const labels = [];
+  for (const buddy of active) {
+    const names = Object.keys(PETS[buddy.petId].states);
+    const state = names[demoStepCount % names.length];
+    setPetState(state, buddy.id);
+    labels.push(`${buddy.name}: ${state}`);
   }
-  return [...names];
-}
-
-function demoStep() {
-  const list = demoStateList();
-  if (list.length === 0) return;
-  const state = list[demoIndex % list.length];
-  demoIndex += 1;
-  for (const buddy of activeBuddies()) {
-    const has = PETS[buddy.petId].states[state];
-    setPetState(has ? state : "idle", buddy.id);
-  }
-  say(`Demo: ${state}`, DEMO_STEP_MS);
+  demoStepCount += 1;
+  say(`Demo · ${labels.join(" · ")}`, DEMO_STEP_MS);
 }
 
 function toggleDemo() {
@@ -354,9 +368,9 @@ function toggleDemo() {
     for (const buddy of activeBuddies()) setPetState("idle", buddy.id);
     say("Demo zastaveno", 1500);
   } else {
-    demoIndex = 0;
-    demoStep();
-    demoTimer = setInterval(demoStep, DEMO_STEP_MS);
+    demoStepCount = 0;
+    demoTick();
+    demoTimer = setInterval(demoTick, DEMO_STEP_MS);
   }
   renderSettings();
 }
@@ -378,47 +392,101 @@ function el(tag, props = {}, children = []) {
   return node;
 }
 
+function section(title, ...content) {
+  return el("div", { className: "settings-section" }, [el("label", { text: title }), ...content]);
+}
+
+function buddyCard(b) {
+  const activeBox = el("input", {
+    type: "checkbox", checked: b.active, title: "Aktivní", "aria-label": "Aktivní",
+    on: { change: (e) => {
+      b.active = e.target.checked;
+      if (!b.active && selectedId === b.id) selectedId = activeBuddies()[0]?.id ?? null;
+      if (!selectedId && activeBuddies().length) selectedId = activeBuddies()[0].id;
+      saveBuddies(); renderBar(); renderSettings();
+    } },
+  });
+  const nameInput = el("input", {
+    type: "text", value: b.name, maxLength: 24, "aria-label": "Jméno buddy",
+    on: { change: (e) => { b.name = e.target.value.trim().slice(0, 24) || b.name; saveBuddies(); renderBar(); renderSettings(); } },
+  });
+  const petSelect = el("select", {
+    "aria-label": "Mazlíček",
+    on: { change: (e) => { b.petId = e.target.value; saveBuddies(); renderBar(); } },
+  }, Object.entries(PETS).map(([id, p]) => el("option", { value: id, text: p.name, selected: b.petId === id })));
+  const removeBtn = el("button", {
+    type: "button", text: "Smazat", disabled: buddies.length <= 1,
+    on: { click: () => {
+      buddies = buddies.filter((x) => x.id !== b.id);
+      runtime.delete(b.id);
+      if (selectedId === b.id) selectedId = activeBuddies()[0]?.id ?? null;
+      saveBuddies(); renderBar(); renderSettings();
+    } },
+  });
+
+  const providerSelect = el("select", {
+    "aria-label": "Model",
+    on: { change: (e) => setProvider(b.id, e.target.value) },
+  }, PROVIDERS.map((p) => el("option", { value: p, text: PROVIDER_LABELS[p], selected: b.provider === p })));
+
+  const sizeValue = el("span", { text: `${Math.round(b.scale * 100)} %` });
+  const sizeSlider = el("input", {
+    type: "range", min: String(BUDDY_SCALE_MIN), max: String(BUDDY_SCALE_MAX), step: "0.05",
+    value: String(b.scale), "aria-label": `Velikost ${b.name}`,
+    on: { input: (e) => {
+      b.scale = clampScale(e.target.value);
+      sizeValue.textContent = `${Math.round(b.scale * 100)} %`;
+      sizeCanvas(b, ensureRuntime(b));
+      saveBuddies();
+    } },
+  });
+  const resetBtn = el("button", {
+    type: "button", text: "Výchozí", title: "Vrátit výchozí velikost",
+    on: { click: () => { b.scale = BUDDY_SCALE_DEFAULT; saveBuddies(); renderBar(); renderSettings(); } },
+  });
+
+  return el("div", { className: "buddy-card" }, [
+    el("div", { className: "settings-row" }, [activeBox, nameInput, petSelect, removeBtn]),
+    el("div", { className: "settings-row-inline" }, [el("span", { className: "row-label", text: "Model" }), providerSelect]),
+    el("div", { className: "settings-row-inline" }, [
+      el("span", { className: "row-label", text: "Velikost" }), sizeSlider, sizeValue, resetBtn,
+    ]),
+  ]);
+}
+
 function renderSettings() {
   const skinSelect = el("select", {
     on: { change: (e) => setSkin(e.target.value) },
   }, SKINS.map((s) => el("option", { value: s, text: s, selected: s === currentSkin() })));
 
-  const selected = findBuddy(selectedId);
-  const providerSelect = el("select", {
-    disabled: !selected,
-    on: { change: (e) => setProvider(selectedId, e.target.value) },
-  }, PROVIDERS.map((p) => el("option", {
-    value: p, text: PROVIDER_LABELS[p], selected: selected?.provider === p,
-  })));
+  const autoHideBox = el("input", {
+    type: "checkbox", checked: autoHide(), "aria-label": "Automaticky skrývat",
+    on: { change: (e) => {
+      storageSet(AUTO_HIDE_KEY, e.target.checked ? "1" : "0");
+      if (!e.target.checked) setCollapsed(false);
+    } },
+  });
 
-  const rows = buddies.map((b) => {
-    const nameInput = el("input", {
-      type: "text", value: b.name, maxLength: 24, "aria-label": "Jméno buddy",
-      on: { change: (e) => { b.name = e.target.value.trim().slice(0, 24) || b.name; saveBuddies(); renderBar(); renderSettings(); } },
-    });
-    const petSelect = el("select", {
-      "aria-label": "Mazlíček",
-      on: { change: (e) => { b.petId = e.target.value; saveBuddies(); renderBar(); } },
-    }, Object.entries(PETS).map(([id, p]) => el("option", { value: id, text: p.name, selected: b.petId === id })));
-    const activeBox = el("input", {
-      type: "checkbox", checked: b.active, "aria-label": "Aktivní",
-      on: { change: (e) => {
-        b.active = e.target.checked;
-        if (!b.active && selectedId === b.id) selectedId = activeBuddies()[0]?.id ?? null;
-        if (!selectedId && activeBuddies().length) selectedId = activeBuddies()[0].id;
-        saveBuddies(); renderBar(); renderSettings();
-      } },
-    });
-    const removeBtn = el("button", {
-      type: "button", text: "Smazat", disabled: buddies.length <= 1,
-      on: { click: () => {
-        buddies = buddies.filter((x) => x.id !== b.id);
-        runtime.delete(b.id);
-        if (selectedId === b.id) selectedId = activeBuddies()[0]?.id ?? null;
-        saveBuddies(); renderBar(); renderSettings();
-      } },
-    });
-    return el("div", { className: "settings-row" }, [activeBox, nameInput, petSelect, removeBtn]);
+  const scaleValue = uiScale();
+  const scaleLabel = el("span", { text: `${Math.round(scaleValue * 100)} %` });
+  const scaleSlider = el("input", {
+    type: "range", min: "0.8", max: "1.4", step: "0.05", value: String(scaleValue),
+    "aria-label": "Velikost ostrovu",
+    on: { input: (e) => {
+      const v = Number(e.target.value);
+      scaleLabel.textContent = `${Math.round(v * 100)} %`;
+      applyUiScale(v);
+    } },
+  });
+  const uiResetBtn = el("button", {
+    type: "button", text: "Výchozí",
+    on: { click: () => { applyUiScale(UI_SCALE_DEFAULT); renderSettings(); } },
+  });
+
+  const demoBtn = el("button", {
+    type: "button",
+    text: demoTimer ? "Zastavit demo" : "Demo všech animací (smyčka)",
+    on: { click: toggleDemo },
   });
 
   const addBtn = el("button", {
@@ -431,56 +499,43 @@ function renderSettings() {
     } },
   });
 
-  const scaleValue = petScale();
-  const scaleLabel = el("span", { text: `${Math.round(scaleValue * 100)} %` });
-  const scaleSlider = el("input", {
-    type: "range", min: "0.8", max: "2", step: "0.05", value: String(scaleValue),
-    "aria-label": "Velikost mazlíčků",
-    on: { input: (e) => {
-      const v = Number(e.target.value);
-      scaleLabel.textContent = `${Math.round(v * 100)} %`;
-      applyPetScale(v);
-    } },
-  });
-
-  const demoBtn = el("button", {
-    type: "button",
-    text: demoTimer ? "Zastavit demo" : "Demo všech animací (smyčka)",
-    on: { click: toggleDemo },
-  });
-
   settingsEl.replaceChildren(
-    el("div", { className: "settings-section" }, [
-      el("label", { text: "Velikost mazlíčků" }),
-      el("div", { className: "settings-row-inline" }, [
-        scaleSlider,
-        scaleLabel,
-        el("button", {
-          type: "button",
-          text: "Výchozí",
-          title: "Vrátit výchozí velikost 130 %",
-          on: { click: () => { applyPetScale(PET_SCALE_DEFAULT); renderSettings(); } },
-        }),
-      ]),
-    ]),
-    el("div", { className: "settings-section" }, [el("label", { text: "Demo" }), demoBtn]),
-    el("div", { className: "settings-section" }, [el("label", { text: "Skin" }), skinSelect]),
-    el("div", { className: "settings-section" }, [
-      el("label", { text: selected ? `Model pro ${selected.name}` : "Model (vyber buddy)" }),
-      providerSelect,
-    ]),
-    el("div", { className: "settings-section" }, [
-      el("label", { text: "Buddy (zaškrtni aktivní)" }),
-      ...rows,
-      addBtn,
-    ]),
+    section("Skin", skinSelect),
+    section("Ostrůvek",
+      el("label", { className: "check" }, [autoHideBox, el("span", { text: "Automaticky skrývat" })]),
+      el("div", { className: "settings-row-inline" }, [scaleSlider, scaleLabel, uiResetBtn]),
+    ),
+    section("Demo", demoBtn),
+    section("Buddy (každý zvlášť)", ...buddies.map(buddyCard), addBtn),
   );
 }
 
+// --- Okno: velikost a skryvani -----------------------------------------------
+// Okno se meni pres capability core:window:allow-set-size.
+const WINDOW_W = 460;
+const EXPANDED_H = 200;
+const SETTINGS_H = 480;
+const COLLAPSED_H = 24;
+const COLLAPSE_DELAY_MS = 1500;
+
+const island = document.getElementById("island");
+const appWindow = window.__TAURI__?.window?.getCurrentWindow?.() ?? null;
+const LogicalSizeCtor = window.__TAURI__?.window?.LogicalSize ?? null;
+let collapsed = false;
+let collapseTimer = null;
+
 function applySize() {
   if (!appWindow || !LogicalSizeCtor) return;
+  const s = uiScale();
   const h = settingsOpen ? SETTINGS_H : (collapsed ? COLLAPSED_H : EXPANDED_H);
-  appWindow.setSize(new LogicalSizeCtor(WINDOW_W, h)).catch(() => {});
+  appWindow.setSize(new LogicalSizeCtor(Math.round(WINDOW_W * s), Math.round(h * s))).catch(() => {});
+}
+
+function setCollapsed(next) {
+  if (collapsed === next) return;
+  collapsed = next;
+  island.classList.toggle("collapsed", next);
+  applySize();
 }
 
 function toggleSettings() {
@@ -495,27 +550,6 @@ function toggleSettings() {
 
 settingsBtn.addEventListener("click", toggleSettings);
 
-// --- Schovavani na okraj -----------------------------------------------------
-// Okno se meni pres capability core:window:allow-set-size.
-const WINDOW_W = 460;
-const EXPANDED_H = 200;
-const SETTINGS_H = 480;
-const COLLAPSED_H = 24;
-const COLLAPSE_DELAY_MS = 1500;
-
-const island = document.getElementById("island");
-const appWindow = window.__TAURI__?.window?.getCurrentWindow?.() ?? null;
-const LogicalSizeCtor = window.__TAURI__?.window?.LogicalSize ?? null;
-let collapsed = false;
-let collapseTimer = null;
-
-function setCollapsed(next) {
-  if (collapsed === next) return;
-  collapsed = next;
-  island.classList.toggle("collapsed", next);
-  applySize();
-}
-
 island.addEventListener("mouseenter", () => {
   clearTimeout(collapseTimer);
   setCollapsed(false);
@@ -523,15 +557,16 @@ island.addEventListener("mouseenter", () => {
 
 island.addEventListener("mouseleave", () => {
   clearTimeout(collapseTimer);
+  if (!autoHide()) return;
   collapseTimer = setTimeout(() => {
     // Nesbalovat, dokud uzivatel pise nebo ma otevrene nastaveni.
-    if (document.activeElement === input || settingsOpen) return;
+    if (document.activeElement === input || settingsOpen || !autoHide()) return;
     setCollapsed(true);
   }, COLLAPSE_DELAY_MS);
 });
 
 input.addEventListener("blur", () => {
-  if (!island.matches(":hover") && !settingsOpen) setCollapsed(true);
+  if (autoHide() && !island.matches(":hover") && !settingsOpen) setCollapsed(true);
 });
 
 // --- Zkratky -----------------------------------------------------------------
@@ -548,7 +583,9 @@ window.addEventListener("keydown", (e) => {
 });
 
 // --- Start -------------------------------------------------------------------
+document.documentElement.style.setProperty("--ui-scale", String(uiScale()));
 renderBar();
+applySize();
 requestAnimationFrame(tick);
 
 // Expose pro pozdejsi napojeni (Tauri invoke / event listener).
