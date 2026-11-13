@@ -1,0 +1,46 @@
+/* Skin: Windows - vzhled jako soucast systemu (Fluent): barvy, akcent a rezim ze Windows.
+   Hodnoty --sys-* nastavuje main.js podle HKCU (AppsUseLightTheme, ColorizationColor). */
+:root[data-skin="windows"] {
+  --island-bg: var(--sys-bg, rgba(32, 32, 32, 0.94));
+  --island-border: var(--sys-border, rgba(255, 255, 255, 0.08));
+  --text: var(--sys-text, #ffffff);
+  --muted: var(--sys-muted, #a0a0a0);
+  --accent: var(--sys-accent, #0078d4);
+  --radius: 8px;
+  --font: "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+}
+
+:root[data-skin="windows"] .bar {
+  backdrop-filter: blur(20px) saturate(125%);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+}
+
+:root[data-skin="windows"] .prompt input {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--island-border);
+  border-bottom: 2px solid var(--accent);
+  border-radius: 4px;
+  color: var(--text);
+}
+
+:root[data-skin="windows"] .buddies canvas.selected {
+  background: rgba(255, 255, 255, 0.06);
+  outline-color: var(--accent);
+}
+
+:root[data-skin="windows"] .bubble {
+  border-radius: 8px;
+}
+
+:root[data-skin="windows"] .settings {
+  scrollbar-color: var(--accent) transparent;
+  scrollbar-width: thin;
+}
+
+:root[data-skin="windows"] .settings select,
+:root[data-skin="windows"] .settings input[type="text"],
+:root[data-skin="windows"] .settings input[type="number"],
+:root[data-skin="windows"] .settings textarea,
+:root[data-skin="windows"] .settings button {
+  border-radius: 4px;
+}

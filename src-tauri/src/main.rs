@@ -2,22 +2,12 @@
 
 use std::time::Duration;
 
+use serde::{Deserialize, Serialize};
 use tauri::{Manager, PhysicalPosition};
 
 const ISLAND_WIDTH_LOGICAL: f64 = 460.0;
 
-/// Lokalni Ollama server (chat API) a model pro agenta.
-const OLLAMA_CHAT_URL: &str = "http://localhost:11434/api/chat";
-const OLLAMA_MODEL: &str = "llama3.1:8b";
-
-/// Cloud poskytovatel (Anthropic Messages API). Klic se cte z promenne prostredi,
-/// nikdy se neuklada do repozitare ani do profilu.
-const ANTHROPIC_URL: &str = "https://api.anthropic.com/v1/messages";
-const ANTHROPIC_MODEL: &str = "claude-sonnet-5-5";
-const ANTHROPIC_KEY_ENV: &str = "ANTHROPIC_API_KEY";
-
-/// Systemova instrukce pro vsechny poskytovatele: cestina a pevny kontext,
-/// aby modely nehalucinovaly (napr. MCP = Model Context Protocol).
+/// Systemovy prompt pro vsechny poskytovatele: cestina, pevny kontext, znacka nalady.
 const SYSTEM_PROMPT: &str = "Jsi BuddyBay, maly asistent v plovoucim ostrovu na ploše. \
 Odpovídej vždy česky, stručně (1-3 věty), bez anglických slov pokud o ně nejde. \
 MCP znamená Model Context Protocol, otevřený protokol pro připojení nástrojů a dat k AI modelům. \
@@ -27,82 +17,237 @@ happy (radost, nadšení), sad (smutek, lítost), surprised (překvapení), angr
 sleepy (únava, nuda), thinking (přemýšlení, nejistota), wink (vtip, žert, mrknutí). \
 Značku nezmiňuj v textu a nevysvětluj ji.";
 
-const REQUEST_TIMEOUT_SECS: u64 = 120;
+/// Parametry pripojeni jednoho buddy. Tajemstvi (klic) se nikdy neposila z frontendu,
+/// jen nazev promenne prostredi, ze ktere se klic cte.
+#[derive(Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentConfig {
+    /// "ollama" | "anthropic" | "openai" (OpenAI-kompatibilni: LM Studio, llama.cpp, OpenRouter...)
+    pub provider: String,
+    pub base_url: String,
+    pub model: String,
+    #[serde(default)]
+    pub api_key_env: String,
+    #[serde(default = "default_temperature")]
+    pub temperature: f32,
+    #[serde(default = "default_max_tokens")]
+    pub max_tokens: u32,
+    #[serde(default = "default_timeout")]
+    pub timeout_secs: u64,
+    /// Doplnujici instrukce za vychozi systemovy prompt (volitelne).
+    #[serde(default)]
+    pub system_prompt: String,
+}
 
-fn http_client() -> Result<reqwest::Client, String> {
+fn default_temperature() -> f32 { 0.7 }
+fn default_max_tokens() -> u32 { 512 }
+fn default_timeout() -> u64 { 120 }
+
+#[derive(Serialize)]
+pub struct SystemTheme {
+    pub dark: bool,
+    pub accent: String,
+}
+
+fn http_client(timeout_secs: u64) -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
-        .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS))
+        .timeout(Duration::from_secs(timeout_secs.max(5)))
         .build()
         .map_err(|e| e.to_string())
 }
 
-async fn ask_ollama(prompt: &str) -> Result<String, String> {
+fn api_key(config: &AgentConfig) -> Result<Option<String>, String> {
+    if config.api_key_env.trim().is_empty() {
+        return Ok(None);
+    }
+    std::env::var(config.api_key_env.trim())
+        .map(Some)
+        .map_err(|_| format!("Chybí proměnná prostředí {}", config.api_key_env.trim()))
+}
+
+fn system_text(config: &AgentConfig) -> String {
+    let extra = config.system_prompt.trim();
+    if extra.is_empty() {
+        SYSTEM_PROMPT.to_string()
+    } else {
+        format!("{SYSTEM_PROMPT}\n\n{extra}")
+    }
+}
+
+fn base(config: &AgentConfig) -> &str {
+    config.base_url.trim_end_matches('/')
+}
+
+async fn ask_ollama(config: &AgentConfig, prompt: &str) -> Result<String, String> {
     let body = serde_json::json!({
-        "model": OLLAMA_MODEL,
+        "model": config.model,
         "messages": [
-            { "role": "system", "content": SYSTEM_PROMPT },
+            { "role": "system", "content": system_text(config) },
             { "role": "user", "content": prompt }
         ],
-        "stream": false
+        "stream": false,
+        "options": { "temperature": config.temperature, "num_predict": config.max_tokens }
     });
-
-    let resp = http_client()?
-        .post(OLLAMA_CHAT_URL)
+    let resp = http_client(config.timeout_secs)?
+        .post(format!("{}/api/chat", base(config)))
         .json(&body)
         .send()
         .await
         .map_err(|e| format!("Ollama není dostupná: {e}"))?;
-
     if !resp.status().is_success() {
         return Err(format!("Ollama vrátila stav {}", resp.status()));
     }
-
-    let value: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
-    value["message"]["content"]
+    let v: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+    v["message"]["content"]
         .as_str()
         .map(|s| s.trim().to_string())
         .ok_or_else(|| "Neočekávaná odpověď od Ollamy".to_string())
 }
 
-async fn ask_anthropic(prompt: &str) -> Result<String, String> {
-    let key = std::env::var(ANTHROPIC_KEY_ENV)
-        .map_err(|_| format!("Chybí proměnná prostředí {ANTHROPIC_KEY_ENV}"))?;
-
+async fn ask_anthropic(config: &AgentConfig, prompt: &str) -> Result<String, String> {
+    let key = match api_key(config)? {
+        Some(k) => k,
+        None => std::env::var("ANTHROPIC_API_KEY").map_err(|_| "Chybí ANTHROPIC_API_KEY".to_string())?,
+    };
     let body = serde_json::json!({
-        "model": ANTHROPIC_MODEL,
-        "max_tokens": 512,
-        "system": SYSTEM_PROMPT,
+        "model": config.model,
+        "max_tokens": config.max_tokens,
+        "temperature": config.temperature,
+        "system": system_text(config),
         "messages": [{ "role": "user", "content": prompt }]
     });
-
-    let resp = http_client()?
-        .post(ANTHROPIC_URL)
+    let resp = http_client(config.timeout_secs)?
+        .post(format!("{}/v1/messages", base(config)))
         .header("x-api-key", key)
         .header("anthropic-version", "2023-06-01")
         .json(&body)
         .send()
         .await
         .map_err(|e| format!("Cloud API není dostupné: {e}"))?;
-
     if !resp.status().is_success() {
         return Err(format!("Cloud API vrátilo stav {}", resp.status()));
     }
-
-    let value: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
-    value["content"][0]["text"]
+    let v: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+    v["content"][0]["text"]
         .as_str()
         .map(|s| s.trim().to_string())
         .ok_or_else(|| "Neočekávaná odpověď od cloud API".to_string())
 }
 
-/// Posle zadani uzivatele zvolenemu poskytovateli a vrati text odpovedi.
-/// Volani jde z Rustu, takze nevadi CORS webview.
-#[tauri::command]
-async fn ask_agent(prompt: String, provider: String) -> Result<String, String> {
-    match provider.as_str() {
-        "anthropic" => ask_anthropic(&prompt).await,
-        _ => ask_ollama(&prompt).await,
+async fn ask_openai(config: &AgentConfig, prompt: &str) -> Result<String, String> {
+    let body = serde_json::json!({
+        "model": config.model,
+        "temperature": config.temperature,
+        "max_tokens": config.max_tokens,
+        "messages": [
+            { "role": "system", "content": system_text(config) },
+            { "role": "user", "content": prompt }
+        ]
+    });
+    let mut req = http_client(config.timeout_secs)?
+        .post(format!("{}/chat/completions", base(config)))
+        .json(&body);
+    if let Some(key) = api_key(config)? {
+        req = req.bearer_auth(key);
     }
+    let resp = req
+        .send()
+        .await
+        .map_err(|e| format!("Server není dostupný: {e}"))?;
+    if !resp.status().is_success() {
+        return Err(format!("Server vrátil stav {}", resp.status()));
+    }
+    let v: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+    v["choices"][0]["message"]["content"]
+        .as_str()
+        .map(|s| s.trim().to_string())
+        .ok_or_else(|| "Neočekávaná odpověď serveru".to_string())
+}
+
+/// Posle zadani uzivatele podle parametru pripojeni a vrati text odpovedi (vcetne znacky nalady).
+#[tauri::command]
+async fn ask_agent(prompt: String, config: AgentConfig) -> Result<String, String> {
+    match config.provider.as_str() {
+        "anthropic" => ask_anthropic(&config, &prompt).await,
+        "openai" => ask_openai(&config, &prompt).await,
+        _ => ask_ollama(&config, &prompt).await,
+    }
+}
+
+/// Seznam modelu pro dany server (Ollama /api/tags, OpenAI-kompatibilni /models).
+#[tauri::command]
+async fn list_models(config: AgentConfig) -> Result<Vec<String>, String> {
+    let client = http_client(config.timeout_secs.min(15))?;
+    match config.provider.as_str() {
+        "anthropic" => Ok(vec![
+            "claude-sonnet-5-5".into(),
+            "claude-opus-5-5".into(),
+            "claude-haiku-5-5".into(),
+        ]),
+        "openai" => {
+            let mut req = client.get(format!("{}/models", base(&config)));
+            if let Some(key) = api_key(&config)? {
+                req = req.bearer_auth(key);
+            }
+            let v: serde_json::Value = req
+                .send()
+                .await
+                .map_err(|e| format!("Server není dostupný: {e}"))?
+                .json()
+                .await
+                .map_err(|e| e.to_string())?;
+            Ok(v["data"]
+                .as_array()
+                .map(|a| a.iter().filter_map(|m| m["id"].as_str().map(String::from)).collect())
+                .unwrap_or_default())
+        }
+        _ => {
+            let v: serde_json::Value = client
+                .get(format!("{}/api/tags", base(&config)))
+                .send()
+                .await
+                .map_err(|e| format!("Ollama není dostupná: {e}"))?
+                .json()
+                .await
+                .map_err(|e| e.to_string())?;
+            Ok(v["models"]
+                .as_array()
+                .map(|a| a.iter().filter_map(|m| m["name"].as_str().map(String::from)).collect())
+                .unwrap_or_default())
+        }
+    }
+}
+
+/// Svetly/tmavy rezim a barva zvyraznění z Windows (HKCU). Mimo Windows vraci vychozi.
+#[tauri::command]
+fn get_system_theme() -> SystemTheme {
+    let mut theme = SystemTheme { dark: true, accent: "#0078D4".to_string() };
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const NO_WINDOW: u32 = 0x0800_0000;
+        let query = |key: &str, value: &str| -> Option<String> {
+            let out = std::process::Command::new("reg")
+                .args(["query", key, "/v", value])
+                .creation_flags(NO_WINDOW)
+                .output()
+                .ok()?;
+            let text = String::from_utf8_lossy(&out.stdout).to_string();
+            text.lines()
+                .find(|l| l.contains(value))
+                .and_then(|l| l.split_whitespace().last().map(String::from))
+        };
+        if let Some(v) = query(r"HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", "AppsUseLightTheme") {
+            theme.dark = v.trim_start_matches("0x") == "0";
+        }
+        if let Some(v) = query(r"HKCU\Software\Microsoft\Windows\DWM", "ColorizationColor") {
+            let hex = v.trim_start_matches("0x");
+            if hex.len() >= 6 {
+                theme.accent = format!("#{}", &hex[hex.len() - 6..]).to_uppercase();
+            }
+        }
+    }
+    theme
 }
 
 /// Umisti ostrov nahoru doprostred aktualniho monitoru.
@@ -127,7 +272,7 @@ fn main() {
             }
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![ask_agent])
+        .invoke_handler(tauri::generate_handler![ask_agent, list_models, get_system_theme])
         .run(tauri::generate_context!())
         .expect("chyba pri spusteni BuddyBay");
 }

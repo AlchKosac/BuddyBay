@@ -53,3 +53,6 @@
   border: 1px solid #b8893e;
   color: #e8d3a8;
 }
+
+/* Posuvnik a scrollbar podle skinu */
+:root[data-skin="brass-radio"] .settings { scrollbar-color: #b8893e #1a140e; scrollbar-width: thin; }

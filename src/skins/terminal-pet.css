@@ -69,3 +69,6 @@
   content: "> ";
   color: var(--accent);
 }
+
+/* Posuvnik a scrollbar podle skinu */
+:root[data-skin="terminal-pet"] .settings { scrollbar-color: #1f3a24 #050705; scrollbar-width: thin; }

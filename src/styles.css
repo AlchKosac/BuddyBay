@@ -300,3 +300,72 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
+
+/* Scrollbar nastaveni (vychozi, skiny ho prepisuji) */
+.settings {
+  scrollbar-width: thin;
+  scrollbar-color: var(--muted) transparent;
+}
+
+/* Pripojeni k agentovi */
+.conn-details {
+  border: 1px solid var(--island-border);
+  border-radius: 8px;
+  padding: 6px 8px;
+}
+
+.conn-details > summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 2px 0;
+}
+
+.conn-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 6px;
+  padding-top: 6px;
+}
+
+.conn-row {
+  display: grid;
+  grid-template-columns: 110px 1fr auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.conn-row > .row-label {
+  min-width: 0;
+}
+
+.conn-row > input[type="text"],
+.conn-row > input[type="number"],
+.conn-row > select {
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.conn-row input[type="number"] {
+  width: 90px;
+}
+
+.conn-full {
+  grid-template-columns: 110px 1fr;
+  align-items: start;
+}
+
+.settings textarea {
+  font: inherit;
+  color: var(--text);
+  background: rgba(127, 127, 140, 0.12);
+  border: 1px solid var(--island-border);
+  border-radius: 8px;
+  padding: 5px 8px;
+  resize: vertical;
+  width: 100%;
+  box-sizing: border-box;
+}

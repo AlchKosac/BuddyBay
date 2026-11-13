@@ -67,10 +67,46 @@ const BUDDY_SCALE_MIN = 0.8;
 const BUDDY_SCALE_MAX = 2;
 
 // --- Skiny, poskytovatele, ulozeni -------------------------------------------
-const SKINS = ["brass-radio", "glass-dock", "terminal-pet"];
+const SKINS = ["brass-radio", "glass-dock", "terminal-pet", "windows"];
 const SKIN_KEY = "buddybay.skin";
-const PROVIDERS = ["ollama", "anthropic"];
-const PROVIDER_LABELS = { ollama: "Lokální (Ollama)", anthropic: "Cloud (Claude)" };
+const PROVIDERS = ["ollama", "anthropic", "openai"];
+const PROVIDER_LABELS = {
+  ollama: "Ollama (lokální)",
+  anthropic: "Anthropic (Claude)",
+  openai: "OpenAI-kompatibilní (LM Studio, llama.cpp, OpenRouter…)",
+};
+
+// Vychozi pripojeni pro kazdeho poskytovatele. Klic se do profilu neuklada,
+// jen nazev promenne prostredi (apiKeyEnv), ze ktere ho Rust cte.
+const PROVIDER_DEFAULTS = {
+  ollama: { provider: "ollama", baseUrl: "http://localhost:11434", model: "llama3.1:8b", apiKeyEnv: "" },
+  anthropic: { provider: "anthropic", baseUrl: "https://api.anthropic.com", model: "claude-sonnet-5-5", apiKeyEnv: "ANTHROPIC_API_KEY" },
+  openai: { provider: "openai", baseUrl: "http://localhost:1234/v1", model: "", apiKeyEnv: "" },
+};
+
+function defaultConnection(provider) {
+  const base = PROVIDER_DEFAULTS[provider] ?? PROVIDER_DEFAULTS.ollama;
+  return { ...base, temperature: 0.7, maxTokens: 512, timeoutSecs: 120, systemPrompt: "" };
+}
+
+function sanitizeConnection(c, legacyProvider) {
+  const provider = PROVIDERS.includes(c?.provider) ? c.provider : (PROVIDERS.includes(legacyProvider) ? legacyProvider : "ollama");
+  const d = defaultConnection(provider);
+  const num = (v, min, max, fallback) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
+  };
+  return {
+    provider,
+    baseUrl: String(c?.baseUrl ?? d.baseUrl).slice(0, 200),
+    model: String(c?.model ?? d.model).slice(0, 120),
+    apiKeyEnv: String(c?.apiKeyEnv ?? d.apiKeyEnv).replace(/[^A-Za-z0-9_]/g, "").slice(0, 64),
+    temperature: num(c?.temperature, 0, 1.5, d.temperature),
+    maxTokens: Math.round(num(c?.maxTokens, 16, 4096, d.maxTokens)),
+    timeoutSecs: Math.round(num(c?.timeoutSecs, 5, 600, d.timeoutSecs)),
+    systemPrompt: String(c?.systemPrompt ?? "").slice(0, 1000),
+  };
+}
 const BUDDIES_KEY = "buddybay.buddies";
 const AUTO_HIDE_KEY = "buddybay.autoHide";
 const UI_SCALE_KEY = "buddybay.uiScale";
@@ -97,7 +133,7 @@ function makeBuddy(name) {
     id: `b${Date.now().toString(36)}${nextBuddyNumber}`,
     petId: DEFAULT_PET,
     name: name || `Buddy ${nextBuddyNumber}`,
-    provider: "ollama",
+    connection: defaultConnection("ollama"),
     active: true,
     scale: BUDDY_SCALE_DEFAULT,
   };
@@ -105,8 +141,8 @@ function makeBuddy(name) {
 
 function defaultBuddies() {
   return [
-    { id: "b1", petId: "servo-skull", name: "Servo", provider: "ollama", active: true, scale: BUDDY_SCALE_DEFAULT },
-    { id: "b2", petId: "pacman", name: "Pac-Man", provider: "ollama", active: true, scale: BUDDY_SCALE_DEFAULT },
+    { id: "b1", petId: "servo-skull", name: "Servo", connection: defaultConnection("ollama"), active: true, scale: BUDDY_SCALE_DEFAULT },
+    { id: "b2", petId: "pacman", name: "Pac-Man", connection: defaultConnection("ollama"), active: true, scale: BUDDY_SCALE_DEFAULT },
   ];
 }
 
@@ -118,7 +154,7 @@ function loadBuddies() {
         id: String(b.id),
         petId: PETS[b.petId] ? b.petId : DEFAULT_PET,
         name: String(b.name || "Buddy").slice(0, 24),
-        provider: PROVIDERS.includes(b.provider) ? b.provider : "ollama",
+        connection: sanitizeConnection(b.connection, b.provider),
         active: b.active !== false,
         scale: clampScale(b.scale),
       }));
@@ -279,7 +315,7 @@ form.addEventListener("submit", async (e) => {
   setPetState("running", buddy.id);
   say(`${buddy.name}: přemýšlím…`, 60000);
   try {
-    const raw = await invoke("ask_agent", { prompt: text, provider: buddy.provider });
+    const raw = await invoke("ask_agent", { prompt: text, config: buddy.connection });
     // Model na konci vrati znacku nalady [nalada:X]; ta se vytahne a zbytek je text.
     const m = raw.match(/\[nalada:\s*([a-z]+)\s*\]\s*$/i);
     const reply = raw.replace(/\s*\[nalada:[^\]]*\]\s*$/i, "").trim();
@@ -316,14 +352,30 @@ function cycleSkin() {
 const savedSkin = storageGet(SKIN_KEY);
 if (savedSkin) setSkin(savedSkin);
 
+// Motiv Windows (svetly/tmavy rezim a barva zvyrazneni) pro skin "windows".
+async function applySystemTheme() {
+  if (!invoke) return;
+  try {
+    const theme = await invoke("get_system_theme");
+    const root = document.documentElement.style;
+    root.setProperty("--sys-accent", theme.accent);
+    root.setProperty("--sys-bg", theme.dark ? "rgba(32, 32, 32, 0.94)" : "rgba(243, 243, 243, 0.96)");
+    root.setProperty("--sys-text", theme.dark ? "#ffffff" : "#1a1a1a");
+    root.setProperty("--sys-muted", theme.dark ? "#a0a0a0" : "#5f5f5f");
+    root.setProperty("--sys-border", theme.dark ? "rgba(255, 255, 255, 0.08)" : "rgba(0, 0, 0, 0.08)");
+  } catch (_) { /* bez motivu zustane vychozi */ }
+}
+
 // --- Poskytovatel konkretniho buddy ------------------------------------------
 function setProvider(buddyId, name) {
   const buddy = findBuddy(buddyId);
   if (!buddy) return null;
-  buddy.provider = PROVIDERS.includes(name) ? name : PROVIDERS[0];
+  const provider = PROVIDERS.includes(name) ? name : PROVIDERS[0];
+  // Zmena poskytovatele nastavi jeho vychozi adresu a model; ostatni hodnoty zachova.
+  buddy.connection = { ...buddy.connection, ...PROVIDER_DEFAULTS[provider], provider };
   saveBuddies();
-  say(`${buddy.name}: ${PROVIDER_LABELS[buddy.provider]}`, 2500);
-  return buddy.provider;
+  say(`${buddy.name}: ${PROVIDER_LABELS[provider]}`, 2500);
+  return provider;
 }
 
 // --- Automaticke skryvani a velikost ostrovu ---------------------------------
@@ -396,6 +448,9 @@ function section(title, ...content) {
   return el("div", { className: "settings-section" }, [el("label", { text: title }), ...content]);
 }
 
+// Nactene seznamy modelu podle buddy (jen v pameti, neuklada se).
+const modelCache = {};
+
 function buddyCard(b) {
   const activeBox = el("input", {
     type: "checkbox", checked: b.active, title: "Aktivní", "aria-label": "Aktivní",
@@ -424,10 +479,68 @@ function buddyCard(b) {
     } },
   });
 
+  const c = b.connection;
+  const save = () => saveBuddies();
+  const textField = (key, placeholder, extra = {}) => el("input", {
+    type: "text", value: c[key], placeholder, ...extra,
+    on: { change: (e) => { c[key] = e.target.value.trim(); save(); } },
+  });
+  const numField = (key, min, max, step = 1) => el("input", {
+    type: "number", value: String(c[key]), min: String(min), max: String(max), step: String(step),
+    on: { change: (e) => { c[key] = Number(e.target.value); buddyConnectionNormalize(b); save(); renderSettings(); } },
+  });
+
   const providerSelect = el("select", {
-    "aria-label": "Model",
-    on: { change: (e) => setProvider(b.id, e.target.value) },
-  }, PROVIDERS.map((p) => el("option", { value: p, text: PROVIDER_LABELS[p], selected: b.provider === p })));
+    "aria-label": "Poskytovatel",
+    on: { change: (e) => { setProvider(b.id, e.target.value); renderSettings(); } },
+  }, PROVIDERS.map((p) => el("option", { value: p, text: PROVIDER_LABELS[p], selected: c.provider === p })));
+
+  const modelList = modelCache[b.id] ?? [];
+  const datalistId = `models-${b.id}`;
+  const modelInput = el("input", {
+    type: "text", value: c.model, list: datalistId, "aria-label": "Model",
+    on: { change: (e) => { c.model = e.target.value.trim(); save(); } },
+  });
+  const modelDatalist = el("datalist", { id: datalistId }, modelList.map((m) => el("option", { value: m })));
+  const loadModelsBtn = el("button", {
+    type: "button", text: "Načíst modely",
+    on: { click: async () => {
+      if (!invoke) { say("Bez Tauri runtime nelze načíst modely.", 3000); return; }
+      try {
+        modelCache[b.id] = await invoke("list_models", { config: c });
+        say(`${b.name}: nalezeno ${modelCache[b.id].length} modelů`, 2500);
+      } catch (err) {
+        modelCache[b.id] = [];
+        say(`${b.name}: ${err}`, 5000);
+      }
+      renderSettings();
+    } },
+  });
+
+  const tempValue = el("span", { text: c.temperature.toFixed(2) });
+  const tempSlider = el("input", {
+    type: "range", min: "0", max: "1.5", step: "0.05", value: String(c.temperature), "aria-label": "Teplota",
+    on: { input: (e) => { c.temperature = Number(e.target.value); tempValue.textContent = c.temperature.toFixed(2); save(); } },
+  });
+
+  const connection = el("div", { className: "conn-grid" }, [
+    el("div", { className: "conn-row" }, [el("span", { className: "row-label", text: "Poskytovatel" }), providerSelect]),
+    el("div", { className: "conn-row" }, [el("span", { className: "row-label", text: "Adresa" }), textField("baseUrl", "http://localhost:11434")]),
+    el("div", { className: "conn-row" }, [el("span", { className: "row-label", text: "Model" }), modelInput, modelDatalist, loadModelsBtn]),
+    el("div", { className: "conn-row" }, [el("span", { className: "row-label", text: "Klíč (env)" }),
+      textField("apiKeyEnv", "název proměnné, např. ANTHROPIC_API_KEY")]),
+    el("div", { className: "conn-row" }, [el("span", { className: "row-label", text: "Teplota" }), tempSlider, tempValue]),
+    el("div", { className: "conn-row" }, [el("span", { className: "row-label", text: "Max tokenů" }), numField("maxTokens", 16, 4096, 16)]),
+    el("div", { className: "conn-row" }, [el("span", { className: "row-label", text: "Timeout (s)" }), numField("timeoutSecs", 5, 600, 5)]),
+    el("div", { className: "conn-row conn-full" }, [
+      el("span", { className: "row-label", text: "Doplněk prompt" }),
+      el("textarea", {
+        rows: 2, maxLength: 1000, placeholder: "Dodatečné instrukce pro tohoto buddy (volitelné)",
+        value: c.systemPrompt, "aria-label": "Doplňující systémový prompt",
+        on: { change: (e) => { c.systemPrompt = e.target.value; save(); } },
+      }),
+    ]),
+  ]);
 
   const sizeValue = el("span", { text: `${Math.round(b.scale * 100)} %` });
   const sizeSlider = el("input", {
@@ -447,11 +560,16 @@ function buddyCard(b) {
 
   return el("div", { className: "buddy-card" }, [
     el("div", { className: "settings-row" }, [activeBox, nameInput, petSelect, removeBtn]),
-    el("div", { className: "settings-row-inline" }, [el("span", { className: "row-label", text: "Model" }), providerSelect]),
     el("div", { className: "settings-row-inline" }, [
       el("span", { className: "row-label", text: "Velikost" }), sizeSlider, sizeValue, resetBtn,
     ]),
+    el("details", { className: "conn-details" }, [el("summary", { text: "Připojení k agentovi" }), connection]),
   ]);
+}
+
+/** Po cislenych zmenach dopocita hodnoty do rozsahu (napr. prazdne cislo). */
+function buddyConnectionNormalize(b) {
+  b.connection = sanitizeConnection(b.connection, b.connection.provider);
 }
 
 function renderSettings() {
@@ -577,13 +695,14 @@ window.addEventListener("keydown", (e) => {
   if (key === "p" && selectedId) {
     e.preventDefault();
     const buddy = findBuddy(selectedId);
-    const i = PROVIDERS.indexOf(buddy.provider);
+    const i = PROVIDERS.indexOf(buddy.connection.provider);
     setProvider(selectedId, PROVIDERS[(i + 1) % PROVIDERS.length]);
   }
 });
 
 // --- Start -------------------------------------------------------------------
 document.documentElement.style.setProperty("--ui-scale", String(uiScale()));
+applySystemTheme();
 renderBar();
 applySize();
 requestAnimationFrame(tick);
