@@ -307,9 +307,11 @@ function setProvider(buddyId, name) {
 // --- Velikost mazlicku (posuvnik v nastaveni) -------------------------------
 const PET_SCALE_KEY = "buddybay.petScale";
 
+const PET_SCALE_DEFAULT = 1.3;
+
 function petScale() {
   const v = Number(storageGet(PET_SCALE_KEY));
-  return Number.isFinite(v) && v >= 0.8 && v <= 2 ? v : 1.3;
+  return Number.isFinite(v) && v >= 0.8 && v <= 2 ? v : PET_SCALE_DEFAULT;
 }
 
 function applyPetScale(v) {
@@ -450,7 +452,16 @@ function renderSettings() {
   settingsEl.replaceChildren(
     el("div", { className: "settings-section" }, [
       el("label", { text: "Velikost mazlíčků" }),
-      el("div", { className: "settings-row-inline" }, [scaleSlider, scaleLabel]),
+      el("div", { className: "settings-row-inline" }, [
+        scaleSlider,
+        scaleLabel,
+        el("button", {
+          type: "button",
+          text: "Výchozí",
+          title: "Vrátit výchozí velikost 130 %",
+          on: { click: () => { applyPetScale(PET_SCALE_DEFAULT); renderSettings(); } },
+        }),
+      ]),
     ]),
     el("div", { className: "settings-section" }, [el("label", { text: "Demo" }), demoBtn]),
     el("div", { className: "settings-section" }, [el("label", { text: "Skin" }), skinSelect]),
