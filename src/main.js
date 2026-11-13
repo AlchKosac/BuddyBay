@@ -429,11 +429,14 @@ function toggleDemo() {
 
 // --- Ukonceni a spousteni s Windows ------------------------------------------
 let autostartOn = false;
+const shortcutOn = { desktop: false, startmenu: false };
 
 async function refreshAutostart() {
   if (!invoke) return;
   try {
     autostartOn = await invoke("get_autostart");
+    shortcutOn.desktop = await invoke("get_shortcut", { kind: "desktop" });
+    shortcutOn.startmenu = await invoke("get_shortcut", { kind: "startmenu" });
     if (settingsOpen) renderSettings();
   } catch (_) { /* bez zapisu zustane vypnuto */ }
 }
@@ -659,10 +662,25 @@ function renderSettings() {
     } },
   });
 
+  const shortcutBox = (kind, label) => el("input", {
+    type: "checkbox", checked: shortcutOn[kind], "aria-label": label,
+    on: { change: async (e) => {
+      if (!invoke) { e.target.checked = false; say("Bez Tauri runtime nelze vytvořit zástupce.", 3000); return; }
+      try {
+        shortcutOn[kind] = await invoke("set_shortcut", { kind, enabled: e.target.checked });
+      } catch (err) {
+        e.target.checked = shortcutOn[kind];
+        say(String(err), 4000);
+      }
+    } },
+  });
+
   settingsEl.replaceChildren(
     topBar,
     section("Spouštění",
       el("label", { className: "check" }, [autostartBox, el("span", { text: "Spouštět s Windows" })]),
+      el("label", { className: "check" }, [shortcutBox("desktop", "Zástupce na ploše"), el("span", { text: "Zástupce na ploše" })]),
+      el("label", { className: "check" }, [shortcutBox("startmenu", "Nabídka Start"), el("span", { text: "Přidat do nabídky Start" })]),
     ),
     section("Skin", skinSelect),
     section("Ostrůvek",

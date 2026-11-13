@@ -319,6 +319,78 @@ fn set_autostart(enabled: bool) -> Result<bool, String> {
     }
 }
 
+/// Cesta k zastupci ("desktop" = plocha, "startmenu" = nabidka Start).
+#[cfg(windows)]
+fn shortcut_path(kind: &str) -> Result<std::path::PathBuf, String> {
+    use std::os::windows::process::CommandExt;
+    let folder = match kind {
+        "desktop" => "Desktop",
+        "startmenu" => "Programs",
+        _ => return Err("Neznámé umístění zástupce".to_string()),
+    };
+    let out = std::process::Command::new("powershell")
+        .args(["-NoProfile", "-Command", &format!("[Environment]::GetFolderPath('{folder}')")])
+        .creation_flags(0x0800_0000)
+        .output()
+        .map_err(|e| e.to_string())?;
+    let dir = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if dir.is_empty() {
+        return Err("Nelze zjistit složku".to_string());
+    }
+    Ok(std::path::PathBuf::from(dir).join("BuddyBay.lnk"))
+}
+
+/// Je zastupce na ploše / v nabidce Start?
+#[tauri::command]
+fn get_shortcut(kind: String) -> bool {
+    #[cfg(windows)]
+    {
+        return shortcut_path(&kind).map(|p| p.exists()).unwrap_or(false);
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = kind;
+        false
+    }
+}
+
+/// Vytvori nebo smaze zastupce (.lnk) pres WScript.Shell.
+#[tauri::command]
+fn set_shortcut(kind: String, enabled: bool) -> Result<bool, String> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        let lnk = shortcut_path(&kind)?;
+        if !enabled {
+            let _ = std::fs::remove_file(&lnk);
+            return Ok(false);
+        }
+        let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+        let script = "$s = (New-Object -ComObject WScript.Shell).CreateShortcut($env:BB_LNK); \
+            $s.TargetPath = $env:BB_EXE; \
+            $s.WorkingDirectory = Split-Path $env:BB_EXE; \
+            $s.IconLocation = $env:BB_EXE + ',0'; \
+            $s.Description = 'BuddyBay'; \
+            $s.Save()";
+        let out = std::process::Command::new("powershell")
+            .args(["-NoProfile", "-Command", script])
+            .env("BB_LNK", lnk.display().to_string())
+            .env("BB_EXE", exe.display().to_string())
+            .creation_flags(0x0800_0000)
+            .output()
+            .map_err(|e| e.to_string())?;
+        if !out.status.success() || !lnk.exists() {
+            return Err("Nepodařilo se vytvořit zástupce".to_string());
+        }
+        Ok(true)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (kind, enabled);
+        Err("Zástupce je dostupný jen ve Windows".to_string())
+    }
+}
+
 /// Ukonci aplikaci (ostrov zmizi).
 #[tauri::command]
 fn quit_app(app: tauri::AppHandle) {
@@ -339,6 +411,8 @@ fn main() {
             get_system_theme,
             get_autostart,
             set_autostart,
+            get_shortcut,
+            set_shortcut,
             quit_app
         ])
         .run(tauri::generate_context!())
