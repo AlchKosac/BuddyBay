@@ -100,8 +100,11 @@ body {
 }
 
 .bubble {
-  align-self: flex-start;
-  margin-left: 70px;
+  /* Bublina je mimo tok rozlozeni: nezatlačí lištu, prekryje ji jen mirne. */
+  position: absolute;
+  top: 74px;
+  left: 70px;
+  z-index: 1;
   max-width: 360px;
   padding: 8px 12px;
   font-size: 12px;
