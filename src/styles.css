@@ -158,7 +158,7 @@ body {
   position: absolute;
   top: 96px;
   left: 70px;
-  z-index: 1;
+  z-index: 3; /* nad panelem nastaveni (z-index 2), jinak zpravy z nastaveni nejsou videt */
   max-width: 360px;
   padding: 8px 12px;
   font-size: 12px;
