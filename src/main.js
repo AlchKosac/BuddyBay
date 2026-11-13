@@ -70,8 +70,36 @@ function say(text, ms = 4000) {
   bubbleTimer = setTimeout(() => { bubble.hidden = true; }, ms);
 }
 
-// Volani Rust prikazu ask_agent (lokalni Ollama). Mimo Tauri neni co volat.
+// Volani Rust prikazu ask_agent. Mimo Tauri neni co volat.
 const invoke = window.__TAURI__?.core?.invoke ?? null;
+
+// Poskytovatel modelu: "ollama" (lokalni, vychozi) nebo "anthropic" (cloud).
+const PROVIDERS = ["ollama", "anthropic"];
+const PROVIDER_KEY = "buddybay.provider";
+
+function currentProvider() {
+  try {
+    const saved = localStorage.getItem(PROVIDER_KEY);
+    if (PROVIDERS.includes(saved)) return saved;
+  } catch (_) { /* ignorovat */ }
+  return PROVIDERS[0];
+}
+
+function setProvider(name) {
+  const next = PROVIDERS.includes(name) ? name : PROVIDERS[0];
+  try { localStorage.setItem(PROVIDER_KEY, next); } catch (_) { /* ignorovat */ }
+  say(next === "anthropic" ? "Poskytovatel: cloud (Claude)" : "Poskytovatel: lokální (Ollama)", 2500);
+  return next;
+}
+
+// Ctrl+Shift+P prepne poskytovatele modelu.
+window.addEventListener("keydown", (e) => {
+  if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "p") {
+    e.preventDefault();
+    const i = PROVIDERS.indexOf(currentProvider());
+    setProvider(PROVIDERS[(i + 1) % PROVIDERS.length]);
+  }
+});
 
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -88,7 +116,7 @@ form.addEventListener("submit", async (e) => {
   setPetState("running");
   say("Přemýšlím…", 60000);
   try {
-    const reply = await invoke("ask_agent", { prompt: text });
+    const reply = await invoke("ask_agent", { prompt: text, provider: currentProvider() });
     setPetState("waving");
     say(reply, 15000);
   } catch (err) {

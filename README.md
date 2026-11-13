@@ -22,7 +22,9 @@ Rané kostra (v0.1):
 6. **Skiny a jazyky** — témata jako JSON/CSS balíčky, lokalizace (cs, en, …).
 7. **Balíčky pro SteamOS** — AppImage / Flatpak, ověřit always-on-top pod Gamescope/KDE.
 8. **Synchronizace nastavení** — jeden přenositelný profil (mazlíčci, skiny, jazyk, agenti bez tajemství) na všech zařízeních.
-9. **Android** — companion aplikace (Tauri 2 mobile): mazlíček, chat s agenty, stav, sync. Plovoucí ostrov jako na PC na Androidu omezený (overlay vyžaduje oprávnění SYSTEM_ALERT_WINDOW), proto je to samostatné rozhraní nad stejným profilem.
+9. **Hlasové ovládání** — vstup řečí (lokální Whisper, čeština) a hlasová odpověď (Piper nebo hlas Windows). Hlas je jen vstup a výstup, model se volí zvlášť.
+10. **Cloud modely** — volba poskytovatele (lokální Ollama / cloud API, např. Claude) pro každého agenta. Klíče jen v systémovém úložišti, ne v profilu ani v repozitáři.
+11. **Android** — companion aplikace (Tauri 2 mobile): mazlíček, chat s agenty, stav, sync. Plovoucí ostrov jako na PC na Androidu omezený (overlay vyžaduje oprávnění SYSTEM_ALERT_WINDOW), proto je to samostatné rozhraní nad stejným profilem.
 
 ## Přenositelnost a synchronizace
 
