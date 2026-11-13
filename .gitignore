@@ -1,0 +1,16 @@
+# Rust / Tauri
+src-tauri/target/
+src-tauri/gen/
+
+# Node (pokud pribude frontend tooling)
+node_modules/
+
+# Systemove a editorske soubory
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Lokalni zdroje, ktere nepatri do repozitare
+*.zip
+tmp/

@@ -1,0 +1,118 @@
+:root {
+  --island-bg: rgba(18, 20, 26, 0.92);
+  --island-border: rgba(255, 255, 255, 0.08);
+  --text: #e9ecf3;
+  --muted: #8a92a6;
+  --accent: #f2b84b;
+  --radius: 18px;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --island-bg: rgba(250, 250, 252, 0.95);
+    --island-border: rgba(0, 0, 0, 0.08);
+    --text: #1d2130;
+    --muted: #6b7286;
+  }
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  color: var(--text);
+  user-select: none;
+}
+
+.island {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 440px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 4px;
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 64px;
+  padding: 0 14px 0 8px;
+  background: var(--island-bg);
+  border: 1px solid var(--island-border);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(12px);
+}
+
+.pet {
+  width: 56px;
+  height: 64px;
+  image-rendering: pixelated;
+  flex: none;
+}
+
+.prompt {
+  flex: 1;
+  min-width: 0;
+}
+
+.prompt input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 9px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--island-border);
+  background: rgba(127, 127, 140, 0.12);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+  user-select: text;
+}
+
+.prompt input:focus {
+  border-color: var(--accent);
+}
+
+.agent-dots {
+  display: flex;
+  gap: 5px;
+  flex: none;
+}
+
+.agent-dots span {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.agent-dots span.busy {
+  background: var(--accent);
+}
+
+.bubble {
+  align-self: flex-start;
+  margin-left: 70px;
+  max-width: 360px;
+  padding: 8px 12px;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--text);
+  background: var(--island-bg);
+  border: 1px solid var(--island-border);
+  border-radius: 12px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.3);
+}
+
+.bubble[hidden] {
+  display: none;
+}

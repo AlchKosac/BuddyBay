@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="cs">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>BuddyBay</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="island" class="island">
+    <div class="bubble" id="bubble" hidden></div>
+    <div class="bar">
+      <canvas id="pet" class="pet" width="64" height="72"></canvas>
+      <form id="prompt" class="prompt" autocomplete="off">
+        <input id="prompt-input" type="text" placeholder="Zadej úkol pro agenta…" />
+      </form>
+      <div class="agent-dots" id="agent-dots" aria-label="Agenti"></div>
+    </div>
+  </div>
+  <script src="main.js"></script>
+</body>
+</html>

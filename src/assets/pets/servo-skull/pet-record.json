@@ -1,0 +1,11 @@
+{
+  "id": "pet_6af581f3c13c8191812fcf0d1c50f650",
+  "name": "Servo-skull",
+  "description": "A watchful Warhammer 40,000 servo-skull with ancient bone, brass augmetics, a red optical lens and hovering cables.",
+  "is_custom": true,
+  "is_active": false,
+  "sprite_sha256": "f1b893a631ef054d315c4eed191359935f9fa8c5ed11ad192c355e6f59e87832",
+  "local_spritesheet": "servo-skull.png",
+  "created_date": "2026-11-12",
+  "storage": "User-authorized local output folder"
+}
