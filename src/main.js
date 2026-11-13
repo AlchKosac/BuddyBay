@@ -105,6 +105,26 @@ const PETS = {
       "jumping":    { row: 9,  frames: 10, ms: 80 },
     },
   },
+  // Drak (FLUX Kontext pozy + BiRefNet vyrezy). Radky: 0 klid, 1 mavani, 2 skok,
+  // 3 premysleni, 4 smutek, 5 plivani ohne. Kazdy radek ma 4 snimky.
+  "cute-dragon": {
+    name: "Cute dragon",
+    sheet: "assets/pets/cute-dragon/spritesheet.png",
+    cellW: 192,
+    cellH: 208,
+    states: {
+      "idle":       { row: 0, frames: 4, ms: 220 },
+      "running":    { row: 0, frames: 4, ms: 140 },
+      "waiting":    { row: 0, frames: 4, ms: 260 },
+      "waving":     { row: 1, frames: 4, ms: 180 },
+      "happy":      { row: 1, frames: 4, ms: 180 },
+      "jumping":    { row: 2, frames: 4, ms: 140 },
+      "thinking":   { row: 3, frames: 4, ms: 260 },
+      "review":     { row: 3, frames: 4, ms: 260 },
+      "failed":     { row: 4, frames: 4, ms: 300 },
+      "fire":       { row: 5, frames: 4, ms: 160 },
+    },
+  },
 };
 
 const DEFAULT_PET = "servo-skull";
@@ -235,7 +255,7 @@ function ensureRuntime(buddy) {
   if (!rt) {
     const canvas = document.createElement("canvas");
     canvas.title = buddy.name;
-    rt = { canvas, ctx: canvas.getContext("2d"), state: "idle", frame: 0, lastTick: 0 };
+    rt = { canvas, ctx: canvas.getContext("2d"), state: "idle", frame: 0, lastTick: 0, particles: [], fireUntil: 0, lastFire: 0 };
     canvas.addEventListener("click", () => selectBuddy(buddy.id));
     runtime.set(buddy.id, rt);
   }
@@ -278,15 +298,93 @@ function drawAll() {
   }
 }
 
+// --- Ohnivy dech (cisteni canvas castice, bez sprite) -------------------------
+const FIRE_SPAWN_PER_S = 90;     // castic za sekundu behem dechu
+const FIRE_MAX_PARTICLES = 220;
+const FIRE_MOUTH = { x: 0.82, y: 0.42 }; // pozice tlamy v zlomcich sirky/vysky bunky
+
+/** Spusti ohnivy dech u buddy na dobu ms. */
+function breatheFire(id = selectedId, ms = 1400, sprite = true) {
+  const buddy = findBuddy(id);
+  if (!buddy) return;
+  const rt = ensureRuntime(buddy);
+  rt.fireUntil = performance.now() + ms;
+  // Pet s vlastnim snimkem ohne prepne na stav "fire" a po dobe se vrati zpet.
+  if (sprite && PETS[buddy.petId].states.fire) {
+    const prev = rt.state === "fire" ? "idle" : rt.state;
+    setPetState("fire", id);
+    setTimeout(() => {
+      if (rt.state === "fire") setPetState(prev, id);
+    }, ms);
+  }
+}
+
+function updateFire(rt, ts, dt, emitting) {
+  const w = rt.canvas.width;
+  const h = rt.canvas.height;
+  if (emitting) {
+    const count = dt * FIRE_SPAWN_PER_S;
+    for (let i = 0; i < count && rt.particles.length < FIRE_MAX_PARTICLES; i++) {
+      const angle = (Math.random() - 0.5) * 0.5;       // mirny rozptyl do stran
+      const speed = 50 + Math.random() * 60;            // jednotky canvasu za sekundu
+      rt.particles.push({
+        x: w * FIRE_MOUTH.x, y: h * FIRE_MOUTH.y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - 10,               // plamen stoupa
+        age: 0, life: 0.35 + Math.random() * 0.35,
+        r: 3 + Math.random() * 5,
+      });
+    }
+  }
+  for (const p of rt.particles) {
+    p.age += dt;
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.r *= 1 + dt * 0.4;                              // plamen se mirne rozsiruje
+  }
+  rt.particles = rt.particles.filter((p) => p.age < p.life);
+}
+
+function drawFire(rt) {
+  const ctx = rt.ctx;
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  for (const p of rt.particles) {
+    const k = p.age / p.life;                         // 0 = zrod, 1 = zanik
+    const color = k < 0.35 ? "255, 240, 170" : (k < 0.7 ? "255, 150, 30" : "220, 50, 10");
+    const alpha = 1 - k;
+    const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.r);
+    g.addColorStop(0, `rgba(${color}, ${alpha})`);
+    g.addColorStop(1, `rgba(${color}, 0)`);
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
 function tick(ts) {
   for (const buddy of activeBuddies()) {
     const rt = ensureRuntime(buddy);
     const def = PETS[buddy.petId].states[rt.state] ?? PETS[buddy.petId].states.idle;
     const interval = def.ms ?? FRAME_MS;
+    let changed = false;
     if (ts - rt.lastTick >= interval) {
       rt.frame = (rt.frame + 1) % def.frames;
       rt.lastTick = ts;
+      changed = true;
+    }
+    const emitting = ts < rt.fireUntil;
+    const fiery = emitting || rt.particles.length > 0;
+    if (fiery) {
+      const dt = rt.lastFire ? Math.min(0.05, (ts - rt.lastFire) / 1000) : 0;
+      updateFire(rt, ts, dt, emitting);
+    }
+    rt.lastFire = ts;
+    if (changed || fiery) {
       drawBuddy(buddy, rt);
+      if (fiery) drawFire(rt);
     }
   }
   requestAnimationFrame(tick);
@@ -362,6 +460,7 @@ form.addEventListener("submit", async (e) => {
     const mood = m ? m[1].toLowerCase() : null;
     const known = mood && PETS[buddy.petId].states[mood] ? mood : "waving";
     setPetState(known, buddy.id);
+    breatheFire(buddy.id, 1400, false); // u odpovedi nechame pozu podle nalady, jen castice
     say(t("chat.reply", { name: buddy.name, text: reply }), 15000);
     setTimeout(() => setPetState("idle", buddy.id), 6000);
     return;
@@ -864,6 +963,6 @@ loadLang(lang).then(() => {
 
 // Expose pro pozdejsi napojeni (Tauri invoke / event listener).
 window.buddy = {
-  setPetState, say, setSkin, cycleSkin, currentSkin, selectBuddy, setLanguage,
+  setPetState, breatheFire, say, setSkin, cycleSkin, currentSkin, selectBuddy, setLanguage,
   SKINS, PETS, PROVIDERS, get buddies() { return buddies; },
 };
