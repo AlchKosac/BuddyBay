@@ -1,0 +1,48 @@
+/* Skin: Glass Dock - pruhledne sklo, jemny okraj, svetle tony.
+   Rozostreni (backdrop-filter) funguje jen tam, kde to system podporuje;
+   bez nej zustava panel citelny diky neprusvitne barve. */
+:root[data-skin="glass-dock"] {
+  --island-bg: rgba(255, 255, 255, 0.62);
+  --island-border: rgba(255, 255, 255, 0.8);
+  --text: #2b3446;
+  --muted: #5b6478;
+  --accent: #3b82f6;
+  --radius: 18px;
+  --font: "Segoe UI", system-ui, sans-serif;
+}
+
+:root[data-skin="glass-dock"] .bar {
+  box-shadow: 0 8px 24px rgba(30, 50, 90, 0.18);
+  backdrop-filter: blur(16px) saturate(140%);
+}
+
+:root[data-skin="glass-dock"] .prompt input {
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  color: #2b3446;
+}
+
+:root[data-skin="glass-dock"] .prompt input::placeholder {
+  color: #5b6478;
+}
+
+:root[data-skin="glass-dock"] .agent-dots span {
+  background: #94a3b8;
+}
+
+:root[data-skin="glass-dock"] .agent-dots span.busy {
+  background: #3b82f6;
+}
+
+:root[data-skin="glass-dock"] .bubble {
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  color: #2b3446;
+}
+
+/* Fallback bez rozostreni: vetsi neprusvitnost */
+@supports not (backdrop-filter: blur(1px)) {
+  :root[data-skin="glass-dock"] .bar {
+    background: rgba(240, 244, 250, 0.96);
+  }
+}

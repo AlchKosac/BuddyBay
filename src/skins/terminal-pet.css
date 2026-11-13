@@ -1,0 +1,71 @@
+/* Skin: Terminal Pet - cerny panel, zeleny monospace, radek jako v terminalu. */
+:root[data-skin="terminal-pet"] {
+  --island-bg: #050705;
+  --island-border: #1f3a24;
+  --text: #3fdc6b;
+  --muted: #2a8a45;
+  --accent: #3fdc6b;
+  --radius: 6px;
+  --font: Consolas, "Cascadia Mono", monospace;
+}
+
+:root[data-skin="terminal-pet"] body,
+:root[data-skin="terminal-pet"] html {
+  font-family: var(--font);
+}
+
+:root[data-skin="terminal-pet"] .bar {
+  backdrop-filter: none;
+  box-shadow: 0 0 0 1px #1f3a24, 0 8px 20px rgba(0, 0, 0, 0.6);
+}
+
+/* Prompt "$" pred vstupem */
+:root[data-skin="terminal-pet"] .prompt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+:root[data-skin="terminal-pet"] .prompt::before {
+  content: "$";
+  color: var(--accent);
+  font-family: var(--font);
+  font-size: 14px;
+}
+
+:root[data-skin="terminal-pet"] .prompt input {
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid #1f3a24;
+  border-radius: 0;
+  padding: 6px 2px;
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 13px;
+}
+
+:root[data-skin="terminal-pet"] .prompt input::placeholder {
+  color: #2a8a45;
+}
+
+:root[data-skin="terminal-pet"] .agent-dots span {
+  border-radius: 0;
+  background: #1f3a24;
+}
+
+:root[data-skin="terminal-pet"] .agent-dots span.busy {
+  background: var(--accent);
+}
+
+:root[data-skin="terminal-pet"] .bubble {
+  background: #050705;
+  border: 1px solid #1f3a24;
+  border-radius: 0;
+  color: #8fd9a2;
+  font-family: var(--font);
+}
+
+:root[data-skin="terminal-pet"] .bubble::before {
+  content: "> ";
+  color: var(--accent);
+}

@@ -84,5 +84,40 @@ form.addEventListener("submit", (e) => {
 sheet.addEventListener("load", drawFrame);
 requestAnimationFrame(loop);
 
+// --- Skiny -----------------------------------------------------------------
+// Skin meni jen vzhled (data-skin na <html>); funkce a API zustavaji stejne.
+const SKINS = ["brass-radio", "glass-dock", "terminal-pet"];
+const SKIN_KEY = "buddybay.skin";
+
+function setSkin(name) {
+  const skin = SKINS.includes(name) ? name : SKINS[0];
+  document.documentElement.dataset.skin = skin;
+  try { localStorage.setItem(SKIN_KEY, skin); } catch (_) { /* soukromy rezim / zakazane ulozeni */ }
+  return skin;
+}
+
+function currentSkin() {
+  return document.documentElement.dataset.skin || SKINS[0];
+}
+
+function cycleSkin() {
+  const i = SKINS.indexOf(currentSkin());
+  return setSkin(SKINS[(i + 1) % SKINS.length]);
+}
+
+// Obnoveni posledni volby; pri chybe zustane vychozi skin z HTML.
+try {
+  const saved = localStorage.getItem(SKIN_KEY);
+  if (saved) setSkin(saved);
+} catch (_) { /* ignorovat */ }
+
+// Zkratka Ctrl+Shift+S prepne skin (zatim jediny ovladaci prvek).
+window.addEventListener("keydown", (e) => {
+  if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "s") {
+    e.preventDefault();
+    cycleSkin();
+  }
+});
+
 // Expose pro pozdejsi napojeni (Tauri invoke / event listener).
-window.buddy = { setPetState, say, PET_STATES };
+window.buddy = { setPetState, say, setSkin, cycleSkin, currentSkin, SKINS, PET_STATES };
