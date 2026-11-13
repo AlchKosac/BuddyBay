@@ -96,7 +96,11 @@ function makeBuddy(name) {
 }
 
 function defaultBuddies() {
-  return [{ id: "b1", petId: DEFAULT_PET, name: "Servo", provider: "ollama", active: true }];
+  // Dva mazlicci vedle sebe pro porovnani; dalsi se daji pridat v nastaveni.
+  return [
+    { id: "b1", petId: "servo-skull", name: "Servo", provider: "ollama", active: true },
+    { id: "b2", petId: "pacman", name: "Pac-Man", provider: "ollama", active: true },
+  ];
 }
 
 function loadBuddies() {
