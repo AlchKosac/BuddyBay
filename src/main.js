@@ -257,9 +257,16 @@ form.addEventListener("submit", async (e) => {
   setPetState("running", buddy.id);
   say(`${buddy.name}: přemýšlím…`, 60000);
   try {
-    const reply = await invoke("ask_agent", { prompt: text, provider: buddy.provider });
-    setPetState("waving", buddy.id);
+    const raw = await invoke("ask_agent", { prompt: text, provider: buddy.provider });
+    // Model na konci vrati znacku nalady [nalada:X]; ta se vytahne a zbytek je text.
+    const m = raw.match(/\[nalada:\s*([a-z]+)\s*\]\s*$/i);
+    const reply = raw.replace(/\s*\[nalada:[^\]]*\]\s*$/i, "").trim();
+    const mood = m ? m[1].toLowerCase() : null;
+    const known = mood && PETS[buddy.petId].states[mood] ? mood : "waving";
+    setPetState(known, buddy.id);
     say(`${buddy.name}: ${reply}`, 15000);
+    setTimeout(() => setPetState("idle", buddy.id), 6000);
+    return;
   } catch (err) {
     setPetState("failed", buddy.id);
     say(`${buddy.name}: ${err}`, 8000);
@@ -433,7 +440,7 @@ settingsBtn.addEventListener("click", toggleSettings);
 // --- Schovavani na okraj -----------------------------------------------------
 // Okno se meni pres capability core:window:allow-set-size.
 const WINDOW_W = 460;
-const EXPANDED_H = 150;
+const EXPANDED_H = 200;
 const SETTINGS_H = 480;
 const COLLAPSED_H = 24;
 const COLLAPSE_DELAY_MS = 1500;
