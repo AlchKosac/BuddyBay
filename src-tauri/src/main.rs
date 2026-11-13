@@ -62,7 +62,7 @@ fn api_key(config: &AgentConfig) -> Result<Option<String>, String> {
     }
     std::env::var(config.api_key_env.trim())
         .map(Some)
-        .map_err(|_| format!("Chybí proměnná prostředí {}", config.api_key_env.trim()))
+        .map_err(|_| format!("Environment variable {} is not set", config.api_key_env.trim()))
 }
 
 fn system_text(config: &AgentConfig) -> String {
@@ -93,21 +93,21 @@ async fn ask_ollama(config: &AgentConfig, prompt: &str) -> Result<String, String
         .json(&body)
         .send()
         .await
-        .map_err(|e| format!("Ollama není dostupná: {e}"))?;
+        .map_err(|e| format!("Ollama is not reachable: {e}"))?;
     if !resp.status().is_success() {
-        return Err(format!("Ollama vrátila stav {}", resp.status()));
+        return Err(format!("Ollama returned status {}", resp.status()));
     }
     let v: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
     v["message"]["content"]
         .as_str()
         .map(|s| s.trim().to_string())
-        .ok_or_else(|| "Neočekávaná odpověď od Ollamy".to_string())
+        .ok_or_else(|| "Unexpected response from Ollama".to_string())
 }
 
 async fn ask_anthropic(config: &AgentConfig, prompt: &str) -> Result<String, String> {
     let key = match api_key(config)? {
         Some(k) => k,
-        None => std::env::var("ANTHROPIC_API_KEY").map_err(|_| "Chybí ANTHROPIC_API_KEY".to_string())?,
+        None => std::env::var("ANTHROPIC_API_KEY").map_err(|_| "Environment variable ANTHROPIC_API_KEY is not set".to_string())?,
     };
     let body = serde_json::json!({
         "model": config.model,
@@ -123,15 +123,15 @@ async fn ask_anthropic(config: &AgentConfig, prompt: &str) -> Result<String, Str
         .json(&body)
         .send()
         .await
-        .map_err(|e| format!("Cloud API není dostupné: {e}"))?;
+        .map_err(|e| format!("Cloud API is not reachable: {e}"))?;
     if !resp.status().is_success() {
-        return Err(format!("Cloud API vrátilo stav {}", resp.status()));
+        return Err(format!("Cloud API returned status {}", resp.status()));
     }
     let v: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
     v["content"][0]["text"]
         .as_str()
         .map(|s| s.trim().to_string())
-        .ok_or_else(|| "Neočekávaná odpověď od cloud API".to_string())
+        .ok_or_else(|| "Unexpected response from the cloud API".to_string())
 }
 
 async fn ask_openai(config: &AgentConfig, prompt: &str) -> Result<String, String> {
@@ -153,15 +153,15 @@ async fn ask_openai(config: &AgentConfig, prompt: &str) -> Result<String, String
     let resp = req
         .send()
         .await
-        .map_err(|e| format!("Server není dostupný: {e}"))?;
+        .map_err(|e| format!("Server is not reachable: {e}"))?;
     if !resp.status().is_success() {
-        return Err(format!("Server vrátil stav {}", resp.status()));
+        return Err(format!("Server returned status {}", resp.status()));
     }
     let v: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
     v["choices"][0]["message"]["content"]
         .as_str()
         .map(|s| s.trim().to_string())
-        .ok_or_else(|| "Neočekávaná odpověď serveru".to_string())
+        .ok_or_else(|| "Unexpected response from the server".to_string())
 }
 
 /// Posle zadani uzivatele podle parametru pripojeni a vrati text odpovedi (vcetne znacky nalady).
@@ -192,7 +192,7 @@ async fn list_models(config: AgentConfig) -> Result<Vec<String>, String> {
             let v: serde_json::Value = req
                 .send()
                 .await
-                .map_err(|e| format!("Server není dostupný: {e}"))?
+                .map_err(|e| format!("Server is not reachable: {e}"))?
                 .json()
                 .await
                 .map_err(|e| e.to_string())?;
@@ -206,7 +206,7 @@ async fn list_models(config: AgentConfig) -> Result<Vec<String>, String> {
                 .get(format!("{}/api/tags", base(&config)))
                 .send()
                 .await
-                .map_err(|e| format!("Ollama není dostupná: {e}"))?
+                .map_err(|e| format!("Ollama is not reachable: {e}"))?
                 .json()
                 .await
                 .map_err(|e| e.to_string())?;
@@ -304,7 +304,7 @@ fn set_autostart(enabled: bool) -> Result<bool, String> {
             let out = reg(&["add", RUN_KEY, "/v", AUTOSTART_NAME, "/t", "REG_SZ", "/d", &quoted, "/f"])
                 .map_err(|e| e.to_string())?;
             if !out.status.success() {
-                return Err("Nepodařilo se zapsat do registru".to_string());
+                return Err("Could not write to the registry".to_string());
             }
         } else {
             // Kdyz zaznam neexistuje, reg vrati chybu; to je v poradku.
@@ -315,7 +315,7 @@ fn set_autostart(enabled: bool) -> Result<bool, String> {
     #[cfg(not(windows))]
     {
         let _ = enabled;
-        Err("Spouštění s Windows je dostupné jen ve Windows".to_string())
+        Err("Start with Windows is available on Windows only".to_string())
     }
 }
 
@@ -326,7 +326,7 @@ fn shortcut_path(kind: &str) -> Result<std::path::PathBuf, String> {
     let folder = match kind {
         "desktop" => "Desktop",
         "startmenu" => "Programs",
-        _ => return Err("Neznámé umístění zástupce".to_string()),
+        _ => return Err("Unknown shortcut location".to_string()),
     };
     let out = std::process::Command::new("powershell")
         .args(["-NoProfile", "-Command", &format!("[Environment]::GetFolderPath('{folder}')")])
@@ -335,7 +335,7 @@ fn shortcut_path(kind: &str) -> Result<std::path::PathBuf, String> {
         .map_err(|e| e.to_string())?;
     let dir = String::from_utf8_lossy(&out.stdout).trim().to_string();
     if dir.is_empty() {
-        return Err("Nelze zjistit složku".to_string());
+        return Err("Could not find the folder".to_string());
     }
     Ok(std::path::PathBuf::from(dir).join("BuddyBay.lnk"))
 }
@@ -380,14 +380,14 @@ fn set_shortcut(kind: String, enabled: bool) -> Result<bool, String> {
             .output()
             .map_err(|e| e.to_string())?;
         if !out.status.success() || !lnk.exists() {
-            return Err("Nepodařilo se vytvořit zástupce".to_string());
+            return Err("Could not create the shortcut".to_string());
         }
         Ok(true)
     }
     #[cfg(not(windows))]
     {
         let _ = (kind, enabled);
-        Err("Zástupce je dostupný jen ve Windows".to_string())
+        Err("Shortcuts are available on Windows only".to_string())
     }
 }
 
@@ -403,10 +403,10 @@ async fn check_update(app: tauri::AppHandle) -> Result<String, String> {
                 .download_and_install(|_, _| {}, || {})
                 .await
                 .map_err(|e| e.to_string())?;
-            println!("Nainstalována verze {version}, restart");
+            println!("Installed version {version}, restarting");
             app.restart();
         }
-        None => Ok("Máš nejnovější verzi".to_string()),
+        None => Ok("You already have the latest version".to_string()),
     }
 }
 

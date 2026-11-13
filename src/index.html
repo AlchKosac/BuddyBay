@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="cs" data-skin="brass-radio">
+<html lang="en" data-skin="brass-radio">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -12,14 +12,14 @@
 </head>
 <body>
   <div id="island" class="island">
-    <div id="grip" class="grip" title="Najeď pro rozbalení" aria-label="Rozbalit ostrov"></div>
+    <div id="grip" class="grip" data-i18n-title="grip.title" data-i18n-aria="grip.aria"></div>
     <div class="bubble" id="bubble" hidden></div>
     <div class="bar">
-      <div id="buddies" class="buddies" aria-label="Aktivní buddy"></div>
+      <div id="buddies" class="buddies" data-i18n-aria="buddies.aria"></div>
       <form id="prompt" class="prompt" autocomplete="off">
-        <input id="prompt-input" type="text" placeholder="Zadej úkol pro vybraného buddy…" />
+        <input id="prompt-input" type="text" data-i18n-placeholder="prompt.placeholder" />
       </form>
-      <button id="settings-btn" class="icon-btn" type="button" aria-label="Nastavení" title="Nastavení">⚙</button>
+      <button id="settings-btn" class="icon-btn" type="button" data-i18n-aria="settings.open" data-i18n-title="settings.open">⚙</button>
     </div>
     <div id="settings" class="settings" hidden></div>
   </div>

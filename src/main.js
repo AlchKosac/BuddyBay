@@ -1,6 +1,53 @@
 // BuddyBay - frontend ostrova.
 // Vice buddy: kazdy ma svuj mazlicek (spritesheet), model, velikost a stav.
 // Aktivni buddy jsou na liste; zprava jde vybranemu buddy.
+// Texty jsou v src/i18n/<jazyk>.json (vychozi en), prepinani v nastaveni.
+
+// --- Jazyk -------------------------------------------------------------------
+const LANG_KEY = "buddybay.lang";
+const LANGS = ["en", "cs"];
+const LANG_NAMES = { en: "English", cs: "Čeština" };
+
+function storageGet(key) {
+  try { return localStorage.getItem(key); } catch (_) { return null; }
+}
+function storageSet(key, value) {
+  try { localStorage.setItem(key, value); } catch (_) { /* soukromy rezim */ }
+}
+
+let lang = LANGS.includes(storageGet(LANG_KEY)) ? storageGet(LANG_KEY) : "en";
+let dict = {};
+let fallbackDict = {};
+
+async function loadDict(code) {
+  const res = await fetch(`i18n/${code}.json`);
+  if (!res.ok) throw new Error(`i18n ${code}: ${res.status}`);
+  return res.json();
+}
+
+/** Nacte jazyk (anglictina je vzdy zaloha). */
+async function loadLang(code) {
+  try { fallbackDict = await loadDict("en"); } catch (_) { fallbackDict = {}; }
+  try { dict = code === "en" ? fallbackDict : await loadDict(code); } catch (_) { dict = fallbackDict; }
+  lang = code;
+  document.documentElement.lang = code;
+  storageSet(LANG_KEY, code);
+}
+
+/** Preklad klice s dosazenim {promennych}. */
+function t(key, vars = {}) {
+  let s = dict[key] ?? fallbackDict[key] ?? key;
+  for (const [k, v] of Object.entries(vars)) s = s.split(`{${k}}`).join(String(v));
+  return s;
+}
+
+/** Preklada staticke prvky oznacene data-i18n-* v index.html. */
+function applyStaticTexts() {
+  document.querySelectorAll("[data-i18n]").forEach((n) => { n.textContent = t(n.dataset.i18n); });
+  document.querySelectorAll("[data-i18n-placeholder]").forEach((n) => { n.placeholder = t(n.dataset.i18nPlaceholder); });
+  document.querySelectorAll("[data-i18n-title]").forEach((n) => { n.title = t(n.dataset.i18nTitle); });
+  document.querySelectorAll("[data-i18n-aria]").forEach((n) => { n.setAttribute("aria-label", t(n.dataset.i18nAria)); });
+}
 
 // --- Mazlicci ---------------------------------------------------------------
 // Servo-skull: spritesheet 8 sloupcu x 11 radku, bunka 192 x 208 px.
@@ -70,11 +117,6 @@ const BUDDY_SCALE_MAX = 2;
 const SKINS = ["brass-radio", "glass-dock", "terminal-pet", "windows"];
 const SKIN_KEY = "buddybay.skin";
 const PROVIDERS = ["ollama", "anthropic", "openai"];
-const PROVIDER_LABELS = {
-  ollama: "Ollama (lokální)",
-  anthropic: "Anthropic (Claude)",
-  openai: "OpenAI-kompatibilní (LM Studio, llama.cpp, OpenRouter…)",
-};
 
 // Vychozi pripojeni pro kazdeho poskytovatele. Klic se do profilu neuklada,
 // jen nazev promenne prostredi (apiKeyEnv), ze ktere ho Rust cte.
@@ -83,6 +125,10 @@ const PROVIDER_DEFAULTS = {
   anthropic: { provider: "anthropic", baseUrl: "https://api.anthropic.com", model: "claude-sonnet-5-5", apiKeyEnv: "ANTHROPIC_API_KEY" },
   openai: { provider: "openai", baseUrl: "http://localhost:1234/v1", model: "", apiKeyEnv: "" },
 };
+
+function providerLabel(p) {
+  return t(`provider.${p}`);
+}
 
 function defaultConnection(provider) {
   const base = PROVIDER_DEFAULTS[provider] ?? PROVIDER_DEFAULTS.ollama;
@@ -107,17 +153,11 @@ function sanitizeConnection(c, legacyProvider) {
     systemPrompt: String(c?.systemPrompt ?? "").slice(0, 1000),
   };
 }
+
 const BUDDIES_KEY = "buddybay.buddies";
 const AUTO_HIDE_KEY = "buddybay.autoHide";
 const UI_SCALE_KEY = "buddybay.uiScale";
 const UI_SCALE_DEFAULT = 1;
-
-function storageGet(key) {
-  try { return localStorage.getItem(key); } catch (_) { return null; }
-}
-function storageSet(key, value) {
-  try { localStorage.setItem(key, value); } catch (_) { /* soukromy rezim */ }
-}
 
 // --- Buddy -------------------------------------------------------------------
 let nextBuddyNumber = 1;
@@ -132,7 +172,7 @@ function makeBuddy(name) {
   return {
     id: `b${Date.now().toString(36)}${nextBuddyNumber}`,
     petId: DEFAULT_PET,
-    name: name || `Buddy ${nextBuddyNumber}`,
+    name: name || t("buddy.newName", { n: nextBuddyNumber }),
     connection: defaultConnection("ollama"),
     active: true,
     scale: BUDDY_SCALE_DEFAULT,
@@ -281,7 +321,7 @@ function selectBuddy(id) {
   if (!buddy || !buddy.active) return;
   selectedId = id;
   renderBar();
-  input.placeholder = `Zadej úkol pro ${buddy.name}…`;
+  input.placeholder = t("placeholder.forBuddy", { name: buddy.name });
 }
 
 // --- Bublina ------------------------------------------------------------------
@@ -308,12 +348,12 @@ form.addEventListener("submit", async (e) => {
 
   if (!invoke) {
     setPetState("failed", buddy.id);
-    say("Bez Tauri runtime nelze volat agenta.", 6000);
+    say(t("chat.noRuntime"), 6000);
     return;
   }
 
   setPetState("running", buddy.id);
-  say(`${buddy.name}: přemýšlím…`, 60000);
+  say(t("chat.thinking", { name: buddy.name }), 60000);
   try {
     const raw = await invoke("ask_agent", { prompt: text, config: buddy.connection });
     // Model na konci vrati znacku nalady [nalada:X]; ta se vytahne a zbytek je text.
@@ -322,12 +362,12 @@ form.addEventListener("submit", async (e) => {
     const mood = m ? m[1].toLowerCase() : null;
     const known = mood && PETS[buddy.petId].states[mood] ? mood : "waving";
     setPetState(known, buddy.id);
-    say(`${buddy.name}: ${reply}`, 15000);
+    say(t("chat.reply", { name: buddy.name, text: reply }), 15000);
     setTimeout(() => setPetState("idle", buddy.id), 6000);
     return;
   } catch (err) {
     setPetState("failed", buddy.id);
-    say(`${buddy.name}: ${err}`, 8000);
+    say(t("chat.error", { name: buddy.name, error: err }), 8000);
   }
   setTimeout(() => setPetState("idle", buddy.id), 3000);
 });
@@ -374,7 +414,7 @@ function setProvider(buddyId, name) {
   // Zmena poskytovatele nastavi jeho vychozi adresu a model; ostatni hodnoty zachova.
   buddy.connection = { ...buddy.connection, ...PROVIDER_DEFAULTS[provider], provider };
   saveBuddies();
-  say(`${buddy.name}: ${PROVIDER_LABELS[provider]}`, 2500);
+  say(t("provider.changed", { name: buddy.name, provider: providerLabel(provider) }), 2500);
   return provider;
 }
 
@@ -407,10 +447,10 @@ function demoTick() {
     const names = Object.keys(PETS[buddy.petId].states);
     const state = names[demoStepCount % names.length];
     setPetState(state, buddy.id);
-    labels.push(`${buddy.name}: ${state}`);
+    labels.push(t("demo.label", { name: buddy.name, state }));
   }
   demoStepCount += 1;
-  say(`Demo · ${labels.join(" · ")}`, DEMO_STEP_MS);
+  say(t("demo.line", { labels: labels.join(" · ") }), DEMO_STEP_MS);
 }
 
 function toggleDemo() {
@@ -418,7 +458,7 @@ function toggleDemo() {
     clearInterval(demoTimer);
     demoTimer = null;
     for (const buddy of activeBuddies()) setPetState("idle", buddy.id);
-    say("Demo zastaveno", 1500);
+    say(t("demo.stopped"), 1500);
   } else {
     demoStepCount = 0;
     demoTick();
@@ -475,7 +515,7 @@ const modelCache = {};
 
 function buddyCard(b) {
   const activeBox = el("input", {
-    type: "checkbox", checked: b.active, title: "Aktivní", "aria-label": "Aktivní",
+    type: "checkbox", checked: b.active, title: t("buddy.active"), "aria-label": t("buddy.active"),
     on: { change: (e) => {
       b.active = e.target.checked;
       if (!b.active && selectedId === b.id) selectedId = activeBuddies()[0]?.id ?? null;
@@ -484,15 +524,15 @@ function buddyCard(b) {
     } },
   });
   const nameInput = el("input", {
-    type: "text", value: b.name, maxLength: 24, "aria-label": "Jméno buddy",
+    type: "text", value: b.name, maxLength: 24, "aria-label": t("buddy.name"),
     on: { change: (e) => { b.name = e.target.value.trim().slice(0, 24) || b.name; saveBuddies(); renderBar(); renderSettings(); } },
   });
   const petSelect = el("select", {
-    "aria-label": "Mazlíček",
+    "aria-label": t("buddy.petAria"),
     on: { change: (e) => { b.petId = e.target.value; saveBuddies(); renderBar(); } },
   }, Object.entries(PETS).map(([id, p]) => el("option", { value: id, text: p.name, selected: b.petId === id })));
   const removeBtn = el("button", {
-    type: "button", text: "Smazat", disabled: buddies.length <= 1,
+    type: "button", text: t("buddy.delete"), disabled: buddies.length <= 1,
     on: { click: () => {
       buddies = buddies.filter((x) => x.id !== b.id);
       runtime.delete(b.id);
@@ -513,27 +553,27 @@ function buddyCard(b) {
   });
 
   const providerSelect = el("select", {
-    "aria-label": "Poskytovatel",
+    "aria-label": t("buddy.providerAria"),
     on: { change: (e) => { setProvider(b.id, e.target.value); renderSettings(); } },
-  }, PROVIDERS.map((p) => el("option", { value: p, text: PROVIDER_LABELS[p], selected: c.provider === p })));
+  }, PROVIDERS.map((p) => el("option", { value: p, text: providerLabel(p), selected: c.provider === p })));
 
   const modelList = modelCache[b.id] ?? [];
   const datalistId = `models-${b.id}`;
   const modelInput = el("input", {
-    type: "text", value: c.model, list: datalistId, "aria-label": "Model",
+    type: "text", value: c.model, list: datalistId, "aria-label": t("buddy.modelAria"),
     on: { change: (e) => { c.model = e.target.value.trim(); save(); } },
   });
   const modelDatalist = el("datalist", { id: datalistId }, modelList.map((m) => el("option", { value: m })));
   const loadModelsBtn = el("button", {
-    type: "button", text: "Načíst modely",
+    type: "button", text: t("buddy.loadModels"),
     on: { click: async () => {
-      if (!invoke) { say("Bez Tauri runtime nelze načíst modely.", 3000); return; }
+      if (!invoke) { say(t("buddy.modelsNoRuntime"), 3000); return; }
       try {
         modelCache[b.id] = await invoke("list_models", { config: c });
-        say(`${b.name}: nalezeno ${modelCache[b.id].length} modelů`, 2500);
+        say(t("buddy.modelsFound", { name: b.name, count: modelCache[b.id].length }), 2500);
       } catch (err) {
         modelCache[b.id] = [];
-        say(`${b.name}: ${err}`, 5000);
+        say(t("chat.error", { name: b.name, error: err }), 5000);
       }
       renderSettings();
     } },
@@ -541,24 +581,24 @@ function buddyCard(b) {
 
   const tempValue = el("span", { text: c.temperature.toFixed(2) });
   const tempSlider = el("input", {
-    type: "range", min: "0", max: "1.5", step: "0.05", value: String(c.temperature), "aria-label": "Teplota",
+    type: "range", min: "0", max: "1.5", step: "0.05", value: String(c.temperature), "aria-label": t("buddy.temperature"),
     on: { input: (e) => { c.temperature = Number(e.target.value); tempValue.textContent = c.temperature.toFixed(2); save(); } },
   });
 
   const connection = el("div", { className: "conn-grid" }, [
-    el("div", { className: "conn-row" }, [el("span", { className: "row-label", text: "Poskytovatel" }), providerSelect]),
-    el("div", { className: "conn-row" }, [el("span", { className: "row-label", text: "Adresa" }), textField("baseUrl", "http://localhost:11434")]),
-    el("div", { className: "conn-row" }, [el("span", { className: "row-label", text: "Model" }), modelInput, modelDatalist, loadModelsBtn]),
-    el("div", { className: "conn-row" }, [el("span", { className: "row-label", text: "Klíč (env)" }),
-      textField("apiKeyEnv", "název proměnné, např. ANTHROPIC_API_KEY")]),
-    el("div", { className: "conn-row" }, [el("span", { className: "row-label", text: "Teplota" }), tempSlider, tempValue]),
-    el("div", { className: "conn-row" }, [el("span", { className: "row-label", text: "Max tokenů" }), numField("maxTokens", 16, 4096, 16)]),
-    el("div", { className: "conn-row" }, [el("span", { className: "row-label", text: "Timeout (s)" }), numField("timeoutSecs", 5, 600, 5)]),
+    el("div", { className: "conn-row" }, [el("span", { className: "row-label", text: t("buddy.provider") }), providerSelect]),
+    el("div", { className: "conn-row" }, [el("span", { className: "row-label", text: t("buddy.address") }), textField("baseUrl", "http://localhost:11434")]),
+    el("div", { className: "conn-row" }, [el("span", { className: "row-label", text: t("buddy.model") }), modelInput, modelDatalist, loadModelsBtn]),
+    el("div", { className: "conn-row" }, [el("span", { className: "row-label", text: t("buddy.keyEnv") }),
+      textField("apiKeyEnv", t("buddy.keyPlaceholder"))]),
+    el("div", { className: "conn-row" }, [el("span", { className: "row-label", text: t("buddy.temperature") }), tempSlider, tempValue]),
+    el("div", { className: "conn-row" }, [el("span", { className: "row-label", text: t("buddy.maxTokens") }), numField("maxTokens", 16, 4096, 16)]),
+    el("div", { className: "conn-row" }, [el("span", { className: "row-label", text: t("buddy.timeout") }), numField("timeoutSecs", 5, 600, 5)]),
     el("div", { className: "conn-row conn-full" }, [
-      el("span", { className: "row-label", text: "Doplněk prompt" }),
+      el("span", { className: "row-label", text: t("buddy.extraPrompt") }),
       el("textarea", {
-        rows: 2, maxLength: 1000, placeholder: "Dodatečné instrukce pro tohoto buddy (volitelné)",
-        value: c.systemPrompt, "aria-label": "Doplňující systémový prompt",
+        rows: 2, maxLength: 1000, placeholder: t("buddy.extraPromptPlaceholder"),
+        value: c.systemPrompt, "aria-label": t("buddy.extraPrompt"),
         on: { change: (e) => { c.systemPrompt = e.target.value; save(); } },
       }),
     ]),
@@ -567,7 +607,7 @@ function buddyCard(b) {
   const sizeValue = el("span", { text: `${Math.round(b.scale * 100)} %` });
   const sizeSlider = el("input", {
     type: "range", min: String(BUDDY_SCALE_MIN), max: String(BUDDY_SCALE_MAX), step: "0.05",
-    value: String(b.scale), "aria-label": `Velikost ${b.name}`,
+    value: String(b.scale), "aria-label": `${t("buddy.size")} ${b.name}`,
     on: { input: (e) => {
       b.scale = clampScale(e.target.value);
       sizeValue.textContent = `${Math.round(b.scale * 100)} %`;
@@ -576,16 +616,16 @@ function buddyCard(b) {
     } },
   });
   const resetBtn = el("button", {
-    type: "button", text: "Výchozí", title: "Vrátit výchozí velikost",
+    type: "button", text: t("island.reset"), title: t("buddy.sizeReset"),
     on: { click: () => { b.scale = BUDDY_SCALE_DEFAULT; saveBuddies(); renderBar(); renderSettings(); } },
   });
 
   return el("div", { className: "buddy-card" }, [
     el("div", { className: "settings-row" }, [activeBox, nameInput, petSelect, removeBtn]),
     el("div", { className: "settings-row-inline" }, [
-      el("span", { className: "row-label", text: "Velikost" }), sizeSlider, sizeValue, resetBtn,
+      el("span", { className: "row-label", text: t("buddy.size") }), sizeSlider, sizeValue, resetBtn,
     ]),
-    el("details", { className: "conn-details" }, [el("summary", { text: "Připojení k agentovi" }), connection]),
+    el("details", { className: "conn-details" }, [el("summary", { text: t("buddy.connection") }), connection]),
   ]);
 }
 
@@ -595,12 +635,16 @@ function buddyConnectionNormalize(b) {
 }
 
 function renderSettings() {
+  const languageSelect = el("select", {
+    on: { change: (e) => setLanguage(e.target.value) },
+  }, LANGS.map((code) => el("option", { value: code, text: LANG_NAMES[code], selected: code === lang })));
+
   const skinSelect = el("select", {
     on: { change: (e) => setSkin(e.target.value) },
-  }, SKINS.map((s) => el("option", { value: s, text: s, selected: s === currentSkin() })));
+  }, SKINS.map((s) => el("option", { value: s, text: t(`skin.${s}`), selected: s === currentSkin() })));
 
   const autoHideBox = el("input", {
-    type: "checkbox", checked: autoHide(), "aria-label": "Automaticky skrývat",
+    type: "checkbox", checked: autoHide(), "aria-label": t("island.autohide"),
     on: { change: (e) => {
       storageSet(AUTO_HIDE_KEY, e.target.checked ? "1" : "0");
       if (!e.target.checked) setCollapsed(false);
@@ -611,7 +655,7 @@ function renderSettings() {
   const scaleLabel = el("span", { text: `${Math.round(scaleValue * 100)} %` });
   const scaleSlider = el("input", {
     type: "range", min: "0.8", max: "1.4", step: "0.05", value: String(scaleValue),
-    "aria-label": "Velikost ostrovu",
+    "aria-label": t("island.size"),
     on: { input: (e) => {
       const v = Number(e.target.value);
       scaleLabel.textContent = `${Math.round(v * 100)} %`;
@@ -619,18 +663,18 @@ function renderSettings() {
     } },
   });
   const uiResetBtn = el("button", {
-    type: "button", text: "Výchozí",
+    type: "button", text: t("island.reset"), title: t("island.resetTitle"),
     on: { click: () => { applyUiScale(UI_SCALE_DEFAULT); renderSettings(); } },
   });
 
   const demoBtn = el("button", {
     type: "button",
-    text: demoTimer ? "Zastavit demo" : "Demo všech animací (smyčka)",
+    text: demoTimer ? t("demo.stop") : t("demo.start"),
     on: { click: toggleDemo },
   });
 
   const addBtn = el("button", {
-    type: "button", text: "+ Přidat buddy",
+    type: "button", text: t("buddy.add"),
     on: { click: () => {
       const b = makeBuddy();
       buddies.push(b);
@@ -640,21 +684,21 @@ function renderSettings() {
   });
 
   const quitBtn = el("button", {
-    type: "button", text: "Ukončit", className: "danger", title: "Ukončit BuddyBay",
+    type: "button", text: t("settings.quit"), className: "danger", title: t("settings.quitTitle"),
     on: { click: quitApp },
   });
   const topBar = el("div", { className: "settings-topbar" }, [
-    el("span", { className: "settings-title", text: "Nastavení" }),
+    el("span", { className: "settings-title", text: t("settings.title") }),
     quitBtn,
   ]);
 
   const autostartBox = el("input", {
-    type: "checkbox", checked: autostartOn, "aria-label": "Spouštět s Windows",
+    type: "checkbox", checked: autostartOn, "aria-label": t("startup.autostart"),
     on: { change: async (e) => {
-      if (!invoke) { e.target.checked = false; say("Bez Tauri runtime nelze nastavit spouštění.", 3000); return; }
+      if (!invoke) { e.target.checked = false; say(t("startup.noRuntime"), 3000); return; }
       try {
         autostartOn = await invoke("set_autostart", { enabled: e.target.checked });
-        say(autostartOn ? "BuddyBay se spustí s Windows" : "Spouštění s Windows vypnuto", 2500);
+        say(autostartOn ? t("startup.autostartOn") : t("startup.autostartOff"), 2500);
       } catch (err) {
         e.target.checked = autostartOn;
         say(String(err), 4000);
@@ -665,7 +709,7 @@ function renderSettings() {
   const shortcutBox = (kind, label) => el("input", {
     type: "checkbox", checked: shortcutOn[kind], "aria-label": label,
     on: { change: async (e) => {
-      if (!invoke) { e.target.checked = false; say("Bez Tauri runtime nelze vytvořit zástupce.", 3000); return; }
+      if (!invoke) { e.target.checked = false; say(t("startup.shortcutNoRuntime"), 3000); return; }
       try {
         shortcutOn[kind] = await invoke("set_shortcut", { kind, enabled: e.target.checked });
       } catch (err) {
@@ -677,33 +721,44 @@ function renderSettings() {
 
   settingsEl.replaceChildren(
     topBar,
-    section("Spouštění",
-      el("label", { className: "check" }, [autostartBox, el("span", { text: "Spouštět s Windows" })]),
-      el("label", { className: "check" }, [shortcutBox("desktop", "Zástupce na ploše"), el("span", { text: "Zástupce na ploše" })]),
-      el("label", { className: "check" }, [shortcutBox("startmenu", "Nabídka Start"), el("span", { text: "Přidat do nabídky Start" })]),
+    section(t("settings.language"), languageSelect),
+    section(t("section.startup"),
+      el("label", { className: "check" }, [autostartBox, el("span", { text: t("startup.autostart") })]),
+      el("label", { className: "check" }, [shortcutBox("desktop", t("startup.desktop")), el("span", { text: t("startup.desktop") })]),
+      el("label", { className: "check" }, [shortcutBox("startmenu", t("startup.startmenu")), el("span", { text: t("startup.startmenu") })]),
     ),
-    section("Aktualizace",
+    section(t("section.update"),
       el("button", {
-        type: "button", text: "Zkontrolovat aktualizace",
+        type: "button", text: t("update.check"),
         on: { click: async () => {
-          if (!invoke) { say("Bez Tauri runtime nelze aktualizovat.", 3000); return; }
-          say("Hledám aktualizaci…", 20000);
+          if (!invoke) { say(t("update.noRuntime"), 3000); return; }
+          say(t("update.searching"), 20000);
           try {
             say(await invoke("check_update"), 6000);
           } catch (err) {
-            say(`Aktualizace selhala: ${err}`, 8000);
+            say(t("update.failed", { error: err }), 8000);
           }
         } },
       }),
     ),
-    section("Skin", skinSelect),
-    section("Ostrůvek",
-      el("label", { className: "check" }, [autoHideBox, el("span", { text: "Automaticky skrývat" })]),
+    section(t("section.skin"), skinSelect),
+    section(t("section.island"),
+      el("label", { className: "check" }, [autoHideBox, el("span", { text: t("island.autohide") })]),
       el("div", { className: "settings-row-inline" }, [scaleSlider, scaleLabel, uiResetBtn]),
     ),
-    section("Demo", demoBtn),
-    section("Buddy (každý zvlášť)", ...buddies.map(buddyCard), addBtn),
+    section(t("section.demo"), demoBtn),
+    section(t("section.buddies"), ...buddies.map(buddyCard), addBtn),
   );
+}
+
+/** Prepne jazyk: nacte slovnik, preklada staticke texty i nastaveni a bublinu. */
+async function setLanguage(code) {
+  await loadLang(code);
+  applyStaticTexts();
+  renderBar();
+  const selected = findBuddy(selectedId);
+  if (selected) input.placeholder = t("placeholder.forBuddy", { name: selected.name });
+  renderSettings();
 }
 
 // --- Okno: velikost a skryvani -----------------------------------------------
@@ -788,15 +843,27 @@ window.addEventListener("keydown", (e) => {
 });
 
 // --- Start -------------------------------------------------------------------
-document.documentElement.style.setProperty("--ui-scale", String(uiScale()));
-applySystemTheme();
-refreshAutostart();
-renderBar();
-applySize();
-requestAnimationFrame(tick);
+function startApp() {
+  applyStaticTexts();
+  document.documentElement.style.setProperty("--ui-scale", String(uiScale()));
+  applySystemTheme();
+  refreshAutostart();
+  renderBar();
+  applySize();
+  requestAnimationFrame(tick);
+}
+
+loadLang(lang).then(() => {
+  startApp();
+  // Volitelne parametry pro nahledy (screenshoty): ?skin=windows&settings=1&lang=en
+  const q = new URLSearchParams(window.location.search);
+  if (q.get("skin") && SKINS.includes(q.get("skin"))) setSkin(q.get("skin"));
+  if (q.get("lang") && LANGS.includes(q.get("lang"))) setLanguage(q.get("lang"));
+  if (q.get("settings") === "1") toggleSettings();
+});
 
 // Expose pro pozdejsi napojeni (Tauri invoke / event listener).
 window.buddy = {
-  setPetState, say, setSkin, cycleSkin, currentSkin, selectBuddy,
+  setPetState, say, setSkin, cycleSkin, currentSkin, selectBuddy, setLanguage,
   SKINS, PETS, PROVIDERS, get buddies() { return buddies; },
 };

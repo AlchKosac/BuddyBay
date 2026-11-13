@@ -18,6 +18,22 @@ BuddyBay sits at the top of your screen like a small car-radio bar. Animated bud
 - Start with Windows, Start menu and desktop shortcuts
 - Auto-update from GitHub releases (signed installer)
 
+## Screenshots
+
+Four skins (Brass Radio, Glass Dock, Terminal Pet, Windows):
+
+| Brass Radio | Glass Dock |
+|---|---|
+| ![Brass Radio](assets/screenshots/bar-brass-radio.png) | ![Glass Dock](assets/screenshots/bar-glass-dock.png) |
+| **Terminal Pet** | **Windows** |
+| ![Terminal Pet](assets/screenshots/bar-terminal-pet.png) | ![Windows](assets/screenshots/bar-windows.png) |
+
+Settings panel (English, Glass Dock):
+
+![Settings](assets/screenshots/settings-en.png)
+
+Czech UI is available in Settings > Language.
+
 ## Download
 
 - **Installer (recommended):** [BuddyBay_0.1.1_x64-setup.exe](https://github.com/AlchKosac/BuddyBay/releases/download/v0.1.1/BuddyBay_0.1.1_x64-setup.exe)
