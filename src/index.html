@@ -13,12 +13,13 @@
   <div id="island" class="island">
     <div class="bubble" id="bubble" hidden></div>
     <div class="bar">
-      <canvas id="pet" class="pet" width="64" height="72"></canvas>
+      <div id="buddies" class="buddies" aria-label="Aktivní buddy"></div>
       <form id="prompt" class="prompt" autocomplete="off">
-        <input id="prompt-input" type="text" placeholder="Zadej úkol pro agenta…" />
+        <input id="prompt-input" type="text" placeholder="Zadej úkol pro vybraného buddy…" />
       </form>
-      <div class="agent-dots" id="agent-dots" aria-label="Agenti"></div>
+      <button id="settings-btn" class="icon-btn" type="button" aria-label="Nastavení" title="Nastavení">⚙</button>
     </div>
+    <div id="settings" class="settings" hidden></div>
   </div>
   <script src="main.js"></script>
 </body>

@@ -154,3 +154,114 @@ body {
 .bubble[hidden] {
   display: none;
 }
+
+/* Aktivni buddy na liste */
+.buddies {
+  display: flex;
+  gap: 4px;
+  flex: none;
+}
+
+.buddies canvas {
+  width: 40px;
+  height: 46px;
+  image-rendering: pixelated;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 150ms ease;
+}
+
+.buddies canvas.selected {
+  background: rgba(127, 127, 140, 0.18);
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Tlacitko nastaveni */
+.icon-btn {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
+  border: 1px solid var(--island-border);
+  background: transparent;
+  color: var(--text);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.icon-btn:hover {
+  border-color: var(--accent);
+}
+
+/* Panel nastaveni pod listou */
+.settings {
+  position: absolute;
+  top: 74px;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--island-bg);
+  border: 1px solid var(--island-border);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  max-height: 290px;
+  overflow-y: auto;
+  user-select: text;
+}
+
+.settings[hidden] {
+  display: none;
+}
+
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.settings-section > label {
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 11px;
+}
+
+.settings select,
+.settings input[type="text"],
+.settings button {
+  font: inherit;
+  color: var(--text);
+  background: rgba(127, 127, 140, 0.12);
+  border: 1px solid var(--island-border);
+  border-radius: 8px;
+  padding: 5px 8px;
+}
+
+.settings select:disabled,
+.settings button:disabled {
+  opacity: 0.4;
+}
+
+.settings-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  gap: 6px;
+  align-items: center;
+}
+
+.settings-row input[type="text"] {
+  min-width: 0;
+}
+
+.settings button {
+  cursor: pointer;
+}
