@@ -319,6 +319,46 @@ function applyPetScale(v) {
 
 applyPetScale(petScale());
 
+// --- Demo animaci (smycka vsech stavu) ----------------------------------------
+// Projde postupne vsechny stavy aktivnich mazlicku a bublina ukaze jmeno stavu.
+const DEMO_STEP_MS = 2400;
+let demoTimer = null;
+let demoIndex = 0;
+
+function demoStateList() {
+  const names = new Set();
+  for (const buddy of activeBuddies()) {
+    for (const name of Object.keys(PETS[buddy.petId].states)) names.add(name);
+  }
+  return [...names];
+}
+
+function demoStep() {
+  const list = demoStateList();
+  if (list.length === 0) return;
+  const state = list[demoIndex % list.length];
+  demoIndex += 1;
+  for (const buddy of activeBuddies()) {
+    const has = PETS[buddy.petId].states[state];
+    setPetState(has ? state : "idle", buddy.id);
+  }
+  say(`Demo: ${state}`, DEMO_STEP_MS);
+}
+
+function toggleDemo() {
+  if (demoTimer) {
+    clearInterval(demoTimer);
+    demoTimer = null;
+    for (const buddy of activeBuddies()) setPetState("idle", buddy.id);
+    say("Demo zastaveno", 1500);
+  } else {
+    demoIndex = 0;
+    demoStep();
+    demoTimer = setInterval(demoStep, DEMO_STEP_MS);
+  }
+  renderSettings();
+}
+
 // --- Nastaveni (panel) -------------------------------------------------------
 const settingsBtn = document.getElementById("settings-btn");
 const settingsEl = document.getElementById("settings");
@@ -401,11 +441,18 @@ function renderSettings() {
     } },
   });
 
+  const demoBtn = el("button", {
+    type: "button",
+    text: demoTimer ? "Zastavit demo" : "Demo všech animací (smyčka)",
+    on: { click: toggleDemo },
+  });
+
   settingsEl.replaceChildren(
     el("div", { className: "settings-section" }, [
       el("label", { text: "Velikost mazlíčků" }),
       el("div", { className: "settings-row-inline" }, [scaleSlider, scaleLabel]),
     ]),
+    el("div", { className: "settings-section" }, [el("label", { text: "Demo" }), demoBtn]),
     el("div", { className: "settings-section" }, [el("label", { text: "Skin" }), skinSelect]),
     el("div", { className: "settings-section" }, [
       el("label", { text: selected ? `Model pro ${selected.name}` : "Model (vyber buddy)" }),
