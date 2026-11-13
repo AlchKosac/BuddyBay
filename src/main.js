@@ -105,24 +105,29 @@ const PETS = {
       "jumping":    { row: 9,  frames: 10, ms: 80 },
     },
   },
-  // Drak (FLUX Kontext pozy + BiRefNet vyrezy). Radky: 0 klid, 1 mavani, 2 skok,
-  // 3 premysleni, 4 smutek, 5 plivani ohne. Kazdy radek ma 4 snimky.
+  // Drak (FLUX Kontext pozy + BiRefNet vyrezy, bez ohne). Sheet ma 8 sloupcu.
+  // Radky: 0 klid a rozhlizeni (kridla mavnou), 1 mavani, 2 skok, 3 premysleni,
+  // 4 smutek, 5 otevrena tlama (ohen dodava script).
   "cute-dragon": {
     name: "Cute dragon",
     sheet: "assets/pets/cute-dragon/spritesheet.png",
     cellW: 192,
     cellH: 208,
     states: {
-      "idle":       { row: 0, frames: 4, ms: 220 },
-      "running":    { row: 0, frames: 4, ms: 140 },
-      "waiting":    { row: 0, frames: 4, ms: 260 },
-      "waving":     { row: 1, frames: 4, ms: 180 },
-      "happy":      { row: 1, frames: 4, ms: 180 },
-      "jumping":    { row: 2, frames: 4, ms: 140 },
-      "thinking":   { row: 3, frames: 4, ms: 260 },
-      "review":     { row: 3, frames: 4, ms: 260 },
+      "idle":       { row: 0, frames: 8, ms: 650 },   // rozhlizi se, obcas mavne kridly
+      "running":    { row: 0, frames: 8, ms: 300 },
+      "waiting":    { row: 0, frames: 8, ms: 900 },
+      "waving":     { row: 1, frames: 4, ms: 200 },
+      "happy":      { row: 1, frames: 4, ms: 200 },
+      "jumping":    { row: 2, frames: 4, ms: 200 },
+      "thinking":   { row: 3, frames: 4, ms: 400 },
+      "review":     { row: 3, frames: 4, ms: 400 },
       "failed":     { row: 4, frames: 4, ms: 300 },
-      "fire":       { row: 5, frames: 4, ms: 160 },
+      // Tlama je otevrena; castice ohne se generuji behem celeho cyklu.
+      "fire":       { row: 5, frames: 4, ms: 180, fireFrames: [0, 1, 2, 3] },
+      // Dve animace, kde se drak dives doleva (zrcadlo snimku, ktere smeruji doprava).
+      "look-left":       { row: 6, frames: 4, ms: 600 },
+      "look-left-sweep": { row: 7, frames: 4, ms: 500 },
     },
   },
 };
@@ -304,19 +309,29 @@ const FIRE_MAX_PARTICLES = 220;
 const FIRE_MOUTH = { x: 0.82, y: 0.42 }; // pozice tlamy v zlomcich sirky/vysky bunky
 
 /** Spusti ohnivy dech u buddy na dobu ms. */
+/** Delka jednoho cyklu plamenu (ms) podle radku "fire" daneho petu. */
+function fireCycleMs(petId) {
+  const d = PETS[petId].states.fire;
+  return d.frames * (d.ms ?? FRAME_MS);
+}
+
+/**
+ * Plivani ohne. Pet s radkem "fire" prehraje jeden cyklus animace; castice vylétaji
+ * jen v snimcich, kde ma otevrenou tlamu (fireFrames). Ostatni peti jen casove.
+ */
 function breatheFire(id = selectedId, ms = 1400, sprite = true) {
   const buddy = findBuddy(id);
   if (!buddy) return;
   const rt = ensureRuntime(buddy);
-  rt.fireUntil = performance.now() + ms;
-  // Pet s vlastnim snimkem ohne prepne na stav "fire" a po dobe se vrati zpet.
   if (sprite && PETS[buddy.petId].states.fire) {
     const prev = rt.state === "fire" ? "idle" : rt.state;
     setPetState("fire", id);
     setTimeout(() => {
       if (rt.state === "fire") setPetState(prev, id);
-    }, ms);
+    }, fireCycleMs(buddy.petId));
+    return;
   }
+  rt.fireUntil = performance.now() + ms;
 }
 
 function updateFire(rt, ts, dt, emitting) {
@@ -375,7 +390,8 @@ function tick(ts) {
       rt.lastTick = ts;
       changed = true;
     }
-    const emitting = ts < rt.fireUntil;
+    const fireFrames = PETS[buddy.petId].states.fire?.fireFrames ?? [];
+    const emitting = (rt.state === "fire" && fireFrames.includes(rt.frame)) || ts < rt.fireUntil;
     const fiery = emitting || rt.particles.length > 0;
     if (fiery) {
       const dt = rt.lastFire ? Math.min(0.05, (ts - rt.lastFire) / 1000) : 0;
@@ -459,13 +475,21 @@ form.addEventListener("submit", async (e) => {
     const reply = raw.replace(/\s*\[nalada:[^\]]*\]\s*$/i, "").trim();
     const mood = m ? m[1].toLowerCase() : null;
     const known = mood && PETS[buddy.petId].states[mood] ? mood : "waving";
-    setPetState(known, buddy.id);
-    breatheFire(buddy.id, 1400, false); // u odpovedi nechame pozu podle nalady, jen castice
+    if (PETS[buddy.petId].states.fire) {
+      // Nejdriv plivnuti, potom pozice podle nalady.
+      breatheFire(buddy.id, 0, true);
+      setTimeout(() => setPetState(known, buddy.id), fireCycleMs(buddy.petId));
+    } else {
+      setPetState(known, buddy.id);
+      breatheFire(buddy.id, 1400, false);
+    }
+    revealIsland();
     say(t("chat.reply", { name: buddy.name, text: reply }), 15000);
     setTimeout(() => setPetState("idle", buddy.id), 6000);
     return;
   } catch (err) {
     setPetState("failed", buddy.id);
+    revealIsland();
     say(t("chat.error", { name: buddy.name, error: err }), 8000);
   }
   setTimeout(() => setPetState("idle", buddy.id), 3000);
@@ -886,6 +910,19 @@ function setCollapsed(next) {
   collapsed = next;
   island.classList.toggle("collapsed", next);
   applySize();
+}
+
+// Po odpovedi agenta se ostrov rozevre a zavre se sam, kdyz ho uzivatel 10 s neprejede mysi.
+const REPLY_OPEN_MS = 10000;
+
+function revealIsland() {
+  if (!autoHide()) return;
+  clearTimeout(collapseTimer);
+  setCollapsed(false);
+  collapseTimer = setTimeout(() => {
+    if (island.matches(":hover") || document.activeElement === input || settingsOpen) return;
+    setCollapsed(true);
+  }, REPLY_OPEN_MS);
 }
 
 function toggleSettings() {
