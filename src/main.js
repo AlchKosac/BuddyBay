@@ -682,6 +682,20 @@ function renderSettings() {
       el("label", { className: "check" }, [shortcutBox("desktop", "Zástupce na ploše"), el("span", { text: "Zástupce na ploše" })]),
       el("label", { className: "check" }, [shortcutBox("startmenu", "Nabídka Start"), el("span", { text: "Přidat do nabídky Start" })]),
     ),
+    section("Aktualizace",
+      el("button", {
+        type: "button", text: "Zkontrolovat aktualizace",
+        on: { click: async () => {
+          if (!invoke) { say("Bez Tauri runtime nelze aktualizovat.", 3000); return; }
+          say("Hledám aktualizaci…", 20000);
+          try {
+            say(await invoke("check_update"), 6000);
+          } catch (err) {
+            say(`Aktualizace selhala: ${err}`, 8000);
+          }
+        } },
+      }),
+    ),
     section("Skin", skinSelect),
     section("Ostrůvek",
       el("label", { className: "check" }, [autoHideBox, el("span", { text: "Automaticky skrývat" })]),

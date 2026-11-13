@@ -391,6 +391,25 @@ fn set_shortcut(kind: String, enabled: bool) -> Result<bool, String> {
     }
 }
 
+/// Zkontroluje novou verzi na GitHubu; kdyz je, stahne, nainstaluje a restartuje aplikaci.
+#[tauri::command]
+async fn check_update(app: tauri::AppHandle) -> Result<String, String> {
+    use tauri_plugin_updater::UpdaterExt;
+    let updater = app.updater().map_err(|e| e.to_string())?;
+    match updater.check().await.map_err(|e| e.to_string())? {
+        Some(update) => {
+            let version = update.version.clone();
+            update
+                .download_and_install(|_, _| {}, || {})
+                .await
+                .map_err(|e| e.to_string())?;
+            println!("Nainstalována verze {version}, restart");
+            app.restart();
+        }
+        None => Ok("Máš nejnovější verzi".to_string()),
+    }
+}
+
 /// Ukonci aplikaci (ostrov zmizi).
 #[tauri::command]
 fn quit_app(app: tauri::AppHandle) {
@@ -405,6 +424,7 @@ fn main() {
             }
             Ok(())
         })
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             ask_agent,
             list_models,
@@ -413,7 +433,8 @@ fn main() {
             set_autostart,
             get_shortcut,
             set_shortcut,
-            quit_app
+            quit_app,
+            check_update
         ])
         .run(tauri::generate_context!())
         .expect("chyba pri spusteni BuddyBay");
