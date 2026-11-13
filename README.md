@@ -21,6 +21,18 @@ Rané kostra (v0.1):
 5. **Běh na pozadí** — autostart při přihlášení Windows, tray ikona, běh po zavření panelu.
 6. **Skiny a jazyky** — témata jako JSON/CSS balíčky, lokalizace (cs, en, …).
 7. **Balíčky pro SteamOS** — AppImage / Flatpak, ověřit always-on-top pod Gamescope/KDE.
+8. **Synchronizace nastavení** — jeden přenositelný profil (mazlíčci, skiny, jazyk, agenti bez tajemství) na všech zařízeních.
+9. **Android** — companion aplikace (Tauri 2 mobile): mazlíček, chat s agenty, stav, sync. Plovoucí ostrov jako na PC na Androidu omezený (overlay vyžaduje oprávnění SYSTEM_ALERT_WINDOW), proto je to samostatné rozhraní nad stejným profilem.
+
+## Přenositelnost a synchronizace
+
+- Nastavení je jeden **verzovaný JSON profil** (schéma s `schemaVersion`), nezávislý na platformě.
+- Synchronizace přes **adaptér** (rozhraní `load` / `save` / `changedSince`). Možnosti:
+  - složka v cloudu (OneDrive / Google Drive / Syncthing) — nejjednodušší, bez vlastního serveru (první krok),
+  - vlastní malý server s přihlášením (až bude potřeba víc uživatelů nebo konflikty),
+  - GitHub Gist / repozitář jako záloha.
+- **Tajemství (API klíče, tokeny MCP) se nesynchronizují** v profilu. Ukládají se do systémového úložiště každého zařízení (Windows Credential Manager, Android Keystore) a na jiném zařízení se zadají znovu.
+- Konflikty: sloučení po polích s časovým razítkem poslední změny (last-writer-wins na úrovni pole).
 
 ## Návrhy vzhledu
 
