@@ -70,15 +70,32 @@ function say(text, ms = 4000) {
   bubbleTimer = setTimeout(() => { bubble.hidden = true; }, ms);
 }
 
-// Zatim jen lokalni demo. Pozdeji sem prijde napojeni na agenty (MCP / API / Ollama).
-form.addEventListener("submit", (e) => {
+// Volani Rust prikazu ask_agent (lokalni Ollama). Mimo Tauri neni co volat.
+const invoke = window.__TAURI__?.core?.invoke ?? null;
+
+form.addEventListener("submit", async (e) => {
   e.preventDefault();
   const text = input.value.trim();
   if (!text) return;
-  setPetState("review");
-  say(`Přijato: ${text}`);
   input.value = "";
-  setTimeout(() => setPetState("idle"), 2500);
+
+  if (!invoke) {
+    setPetState("failed");
+    say("Bez Tauri runtime nelze volat agenta.", 6000);
+    return;
+  }
+
+  setPetState("running");
+  say("Přemýšlím…", 60000);
+  try {
+    const reply = await invoke("ask_agent", { prompt: text });
+    setPetState("waving");
+    say(reply, 15000);
+  } catch (err) {
+    setPetState("failed");
+    say(String(err), 8000);
+  }
+  setTimeout(() => setPetState("idle"), 3000);
 });
 
 sheet.addEventListener("load", drawFrame);
