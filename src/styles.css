@@ -56,23 +56,41 @@ body {
   pointer-events: none;
 }
 
-.island::after {
+/* Uchyt pro rozbaleni: jen mala zona nahore, ne cele okno.
+   Vidi se jen ve sbalenem stavu; hover na nej ostrov rozbali. */
+.grip {
+  display: none;
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 96px;
+  height: 16px;
+  margin-left: -48px;
+  cursor: pointer;
+  z-index: 3;
+}
+
+.grip::after {
   content: "";
   position: absolute;
-  top: 8px;
+  top: 6px;
   left: 50%;
   width: 56px;
   height: 4px;
   margin-left: -28px;
   border-radius: 2px;
   background: var(--muted);
-  opacity: 0;
-  transition: opacity 180ms ease;
-  pointer-events: none;
+  opacity: 0.7;
+  transition: opacity 180ms ease, background 180ms ease;
 }
 
-.island.collapsed::after {
-  opacity: 0.7;
+.grip:hover::after {
+  opacity: 1;
+  background: var(--accent);
+}
+
+.island.collapsed .grip {
+  display: block;
 }
 
 .bar {

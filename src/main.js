@@ -668,9 +668,18 @@ function toggleSettings() {
 
 settingsBtn.addEventListener("click", toggleSettings);
 
-island.addEventListener("mouseenter", () => {
+const grip = document.getElementById("grip");
+
+// Rozbaleni jen z male zony (uchytu), ne z celeho sbaleneho okna.
+grip.addEventListener("mouseenter", () => {
   clearTimeout(collapseTimer);
   setCollapsed(false);
+});
+grip.addEventListener("click", () => setCollapsed(false));
+
+// Kdyz je ostrov rozbaleny, kurzor uvnitr ho drzi otevreny.
+island.addEventListener("mouseenter", () => {
+  clearTimeout(collapseTimer);
 });
 
 island.addEventListener("mouseleave", () => {
