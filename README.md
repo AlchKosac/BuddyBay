@@ -36,8 +36,8 @@ Czech UI is available in Settings > Language.
 
 ## Download
 
-- **Installer (recommended):** [BuddyBay_0.1.2_x64-setup.exe](https://github.com/AlchKosac/BuddyBay/releases/download/v0.1.2/BuddyBay_0.1.2_x64-setup.exe)
-- **ZIP (portable package with the installer and a short README):** [BuddyBay-0.1.2-windows.zip](https://github.com/AlchKosac/BuddyBay/releases/download/v0.1.2/BuddyBay-0.1.2-windows.zip)
+- **Installer (recommended):** [BuddyBay_0.1.3_x64-setup.exe](https://github.com/AlchKosac/BuddyBay/releases/download/v0.1.3/BuddyBay_0.1.3_x64-setup.exe)
+- **ZIP (portable package with the installer and a short README):** [BuddyBay-0.1.3-windows.zip](https://github.com/AlchKosac/BuddyBay/releases/download/v0.1.3/BuddyBay-0.1.3-windows.zip)
 - All releases: https://github.com/AlchKosac/BuddyBay/releases
 
 Windows may show an "unknown publisher" warning, because the installer is not code-signed yet.

@@ -44,3 +44,7 @@
 :root[data-skin="windows"] .settings button {
   border-radius: 4px;
 }
+
+/* Rozbalovaci nabidky: barvy podle systemoveho motivu (svetly nebo tmavy). */
+:root[data-skin="windows"] .settings select option { background: var(--sys-bg, #202020); color: var(--sys-text, #ffffff); }
+:root[data-skin="windows"] .settings select option:checked { background: var(--sys-accent, #0078d4); color: #ffffff; }

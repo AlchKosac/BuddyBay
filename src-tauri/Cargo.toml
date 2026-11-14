@@ -1,6 +1,6 @@
 [package]
 name = "buddybay"
-version = "0.1.2"
+version = "0.1.3"
 description = "BuddyBay - plovouci ostrov pro AI agenty a jejich mazlicky"
 edition = "2021"
 

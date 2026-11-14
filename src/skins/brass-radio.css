@@ -56,3 +56,7 @@
 
 /* Posuvnik a scrollbar podle skinu */
 :root[data-skin="brass-radio"] .settings { scrollbar-color: #b8893e #1a140e; scrollbar-width: thin; }
+
+/* Rozbalovaci nabidky (option) maji vlastni tmave pozadi a svetly text, jinak jsou necitelne. */
+:root[data-skin="brass-radio"] .settings select option { background: #1a140e; color: #e8d3a8; }
+:root[data-skin="brass-radio"] .settings select option:checked { background: #b8893e; color: #1a140e; }

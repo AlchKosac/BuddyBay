@@ -195,7 +195,7 @@ dependencies = [
 
 [[package]]
 name = "buddybay"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "reqwest 0.12.28",
  "serde",

@@ -72,3 +72,7 @@
 
 /* Posuvnik a scrollbar podle skinu */
 :root[data-skin="terminal-pet"] .settings { scrollbar-color: #1f3a24 #050705; scrollbar-width: thin; }
+
+/* Rozbalovaci nabidky: tmave pozadi a zeleny text terminalu. */
+:root[data-skin="terminal-pet"] .settings select option { background: #050705; color: #3fdc6b; }
+:root[data-skin="terminal-pet"] .settings select option:checked { background: #1f3a24; color: #3fdc6b; }
