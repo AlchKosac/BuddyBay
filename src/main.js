@@ -175,9 +175,16 @@ function sanitizeConnection(c, legacyProvider) {
     temperature: num(c?.temperature, 0, 1.5, d.temperature),
     maxTokens: Math.round(num(c?.maxTokens, 16, 4096, d.maxTokens)),
     timeoutSecs: Math.round(num(c?.timeoutSecs, 5, 600, d.timeoutSecs)),
-    systemPrompt: String(c?.systemPrompt ?? "").slice(0, 1000),
+    systemPrompt: c?.systemPrompt == null ? BUDDY_PROMPT_DEFAULT : String(c.systemPrompt).slice(0, 1000),
   };
 }
+
+// Vychozi doplnek promptu pro kazdeho buddy: rika modelu, ze je buddy na liste.
+// Posila se spolu se zakladnimi instrukcemi aplikace (Rust SYSTEM_PROMPT).
+const BUDDY_PROMPT_DEFAULT = "Jsi buddy, malý společník, který žije na liště nad plochou uživatele. " +
+  "Nejsi obecný chatbot, ale parťák, se kterým se dá mluvit mezi prací. " +
+  "Když se tě někdo zeptá, kdo jsi, řekni, že jsi buddy z BuddyBay. " +
+  "Mluv přátelsky a s lehkým humorem, drž se krátkých odpovědí a neber sebe moc vážně.";
 
 const BUDDIES_KEY = "buddybay.buddies";
 const AUTO_HIDE_KEY = "buddybay.autoHide";
@@ -198,7 +205,7 @@ function makeBuddy(name) {
     id: `b${Date.now().toString(36)}${nextBuddyNumber}`,
     petId: DEFAULT_PET,
     name: name || t("buddy.newName", { n: nextBuddyNumber }),
-    connection: defaultConnection("ollama"),
+    connection: { ...defaultConnection("ollama"), systemPrompt: BUDDY_PROMPT_DEFAULT },
     active: true,
     scale: BUDDY_SCALE_DEFAULT,
   };
@@ -206,8 +213,8 @@ function makeBuddy(name) {
 
 function defaultBuddies() {
   return [
-    { id: "b1", petId: "servo-skull", name: "Servo", connection: defaultConnection("ollama"), active: true, scale: BUDDY_SCALE_DEFAULT },
-    { id: "b2", petId: "pacman", name: "Pac-Man", connection: defaultConnection("ollama"), active: true, scale: BUDDY_SCALE_DEFAULT },
+    { id: "b1", petId: "servo-skull", name: "Servo", connection: { ...defaultConnection("ollama"), systemPrompt: BUDDY_PROMPT_DEFAULT }, active: true, scale: BUDDY_SCALE_DEFAULT },
+    { id: "b2", petId: "pacman", name: "Pac-Man", connection: { ...defaultConnection("ollama"), systemPrompt: BUDDY_PROMPT_DEFAULT }, active: true, scale: BUDDY_SCALE_DEFAULT },
   ];
 }
 
@@ -717,14 +724,6 @@ function buddyCard(b) {
     el("div", { className: "conn-row" }, [el("span", { className: "row-label", text: t("buddy.temperature") }), tempSlider, tempValue]),
     el("div", { className: "conn-row" }, [el("span", { className: "row-label", text: t("buddy.maxTokens") }), numField("maxTokens", 16, 4096, 16)]),
     el("div", { className: "conn-row" }, [el("span", { className: "row-label", text: t("buddy.timeout") }), numField("timeoutSecs", 5, 600, 5)]),
-    el("div", { className: "conn-row conn-full" }, [
-      el("span", { className: "row-label", text: t("buddy.extraPrompt") }),
-      el("textarea", {
-        rows: 2, maxLength: 1000, placeholder: t("buddy.extraPromptPlaceholder"),
-        value: c.systemPrompt, "aria-label": t("buddy.extraPrompt"),
-        on: { change: (e) => { c.systemPrompt = e.target.value; save(); } },
-      }),
-    ]),
   ]);
 
   const sizeValue = el("span", { text: `${Math.round(b.scale * 100)} %` });
@@ -743,10 +742,15 @@ function buddyCard(b) {
     on: { click: () => { b.scale = BUDDY_SCALE_DEFAULT; saveBuddies(); renderBar(); renderSettings(); } },
   });
 
+  const promptBtn = el("button", {
+    type: "button", text: t("buddy.prompt"), title: t("buddy.promptTitle", { name: b.name }),
+    on: { click: () => { promptEditorId = b.id; renderSettings(); } },
+  });
+
   return el("div", { className: "buddy-card" }, [
     el("div", { className: "settings-row" }, [activeBox, nameInput, petSelect, removeBtn]),
     el("div", { className: "settings-row-inline" }, [
-      el("span", { className: "row-label", text: t("buddy.size") }), sizeSlider, sizeValue, resetBtn,
+      el("span", { className: "row-label", text: t("buddy.size") }), sizeSlider, sizeValue, resetBtn, promptBtn,
     ]),
     el("details", { className: "conn-details" }, [el("summary", { text: t("buddy.connection") }), connection]),
   ]);
@@ -757,7 +761,46 @@ function buddyConnectionNormalize(b) {
   b.connection = sanitizeConnection(b.connection, b.connection.provider);
 }
 
+// Buddy, jehoz prompt se prave upravuje (null = bezne nastaveni).
+let promptEditorId = null;
+
+/** Podokno s textarea pro prompt jednoho buddy; obsahuje reset na vychozi text. */
+function promptEditor(b) {
+  const c = b.connection;
+  const area = el("textarea", {
+    rows: 10, maxLength: 1000, value: c.systemPrompt, "aria-label": t("buddy.prompt"),
+    on: { input: (e) => { c.systemPrompt = e.target.value; saveBuddies(); } },
+  });
+  const resetBtn = el("button", {
+    type: "button", text: t("buddy.promptReset"),
+    on: { click: () => { c.systemPrompt = BUDDY_PROMPT_DEFAULT; saveBuddies(); area.value = BUDDY_PROMPT_DEFAULT; } },
+  });
+  const backBtn = el("button", {
+    type: "button", text: t("buddy.promptBack"),
+    on: { click: () => { promptEditorId = null; renderSettings(); } },
+  });
+  return [
+    el("div", { className: "settings-topbar" }, [
+      el("span", { className: "settings-title", text: t("buddy.promptTitle", { name: b.name }) }), backBtn,
+    ]),
+    section(t("buddy.prompt"),
+      el("span", { className: "ts", text: t("buddy.promptHint") }),
+      area,
+      el("div", { className: "settings-row-inline" }, [resetBtn]),
+    ),
+  ];
+}
+
 function renderSettings() {
+  if (promptEditorId) {
+    const pb = findBuddy(promptEditorId);
+    if (pb) {
+      settingsEl.replaceChildren(...promptEditor(pb));
+      return;
+    }
+    promptEditorId = null;
+  }
+
   const languageSelect = el("select", {
     on: { change: (e) => setLanguage(e.target.value) },
   }, LANGS.map((code) => el("option", { value: code, text: LANG_NAMES[code], selected: code === lang })));
