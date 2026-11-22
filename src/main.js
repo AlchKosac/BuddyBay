@@ -791,6 +791,22 @@ function promptEditor(b) {
   ];
 }
 
+/** Obrazek monitoru se 4 okraji: sede dokud na ne neni kurzor, po najeti se rozsveti, klik nastavi umisteni. */
+function placementPicker() {
+  const side = currentSide();
+  const monitor = el("div", { className: "monitor", "aria-label": t("section.placement") });
+  for (const p of PLACEMENTS) {
+    monitor.appendChild(el("button", {
+      type: "button",
+      className: `place-btn place-${p}${p === side ? " active" : ""}`,
+      title: t(`placement.${p}`),
+      "aria-label": t(`placement.${p}`),
+      on: { click: () => setPlacement(p) },
+    }));
+  }
+  return monitor;
+}
+
 function renderSettings() {
   if (promptEditorId) {
     const pb = findBuddy(promptEditorId);
@@ -908,6 +924,7 @@ function renderSettings() {
       }),
     ),
     section(t("section.skin"), skinSelect),
+    section(t("section.placement"), placementPicker()),
     section(t("section.island"),
       el("label", { className: "check" }, [autoHideBox, el("span", { text: t("island.autohide") })]),
       el("div", { className: "settings-row-inline" }, [scaleSlider, scaleLabel, uiResetBtn]),
@@ -941,11 +958,46 @@ const LogicalSizeCtor = window.__TAURI__?.window?.LogicalSize ?? null;
 let collapsed = false;
 let collapseTimer = null;
 
+// --- Umisteni ostrovu (hlavni panel, spodek, levy/pravy okraj) ---------------
+const PLACEMENT_KEY = "buddybay.placement";
+const PLACEMENTS = ["top", "bottom", "left", "right"];
+const VERT_H = 440;        // delka svisleho docku (stejna jako dnesni sirka listy)
+const COLLAPSED_W = 24;    // sirka sbaleneho okna u levého/praveho okraje
+
+function currentSide() {
+  const v = storageGet(PLACEMENT_KEY);
+  return PLACEMENTS.includes(v) ? v : "top";
+}
+
+/** Velikost okna pro aktualni stav (logicke px, bez uiScale). */
+function windowBox() {
+  const side = currentSide();
+  if (side === "left" || side === "right") {
+    if (collapsed) return { w: COLLAPSED_W, h: VERT_H };
+    return { w: WINDOW_W, h: settingsOpen ? SETTINGS_H : VERT_H };
+  }
+  return { w: WINDOW_W, h: settingsOpen ? SETTINGS_H : (collapsed ? COLLAPSED_H : EXPANDED_H) };
+}
+
 function applySize() {
   if (!appWindow || !LogicalSizeCtor) return;
   const s = uiScale();
-  const h = settingsOpen ? SETTINGS_H : (collapsed ? COLLAPSED_H : EXPANDED_H);
-  appWindow.setSize(new LogicalSizeCtor(Math.round(WINDOW_W * s), Math.round(h * s))).catch(() => {});
+  const { w, h } = windowBox();
+  const W = Math.round(w * s);
+  const H = Math.round(h * s);
+  appWindow.setSize(new LogicalSizeCtor(W, H))
+    .then(() => (invoke ? invoke("place_island", { side: currentSide(), width: W, height: H }) : null))
+    .catch(() => {});
+}
+
+function setPlacement(side) {
+  const s = PLACEMENTS.includes(side) ? side : "top";
+  storageSet(PLACEMENT_KEY, s);
+  document.documentElement.dataset.side = s;
+  setCollapsed(false);
+  applySize();
+  renderBar();
+  if (settingsOpen) renderSettings();
 }
 
 function setCollapsed(next) {
@@ -1024,6 +1076,7 @@ window.addEventListener("keydown", (e) => {
 // --- Start -------------------------------------------------------------------
 function startApp() {
   applyStaticTexts();
+  document.documentElement.dataset.side = currentSide();
   document.documentElement.style.setProperty("--ui-scale", String(uiScale()));
   applySystemTheme();
   refreshAutostart();

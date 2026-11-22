@@ -264,6 +264,30 @@ fn place_top_center(window: &tauri::WebviewWindow) -> tauri::Result<()> {
     Ok(())
 }
 
+/// Umisti ostrov na okraj pracovni plochy (bez hlavniho panelu). Rozmery jsou v logickych px.
+#[tauri::command]
+fn place_island(window: tauri::WebviewWindow, side: String, width: f64, height: f64) -> Result<(), String> {
+    let monitor = window
+        .current_monitor()
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "monitor nenalezen".to_string())?;
+    let scale = monitor.scale_factor();
+    let wa = monitor.work_area();
+    let w = (width * scale).round() as i32;
+    let h = (height * scale).round() as i32;
+    let (wx, wy) = (wa.position.x, wa.position.y);
+    let (ww, wh) = (wa.size.width as i32, wa.size.height as i32);
+    let (x, y) = match side.as_str() {
+        "bottom" => (wx + (ww - w) / 2, wy + wh - h),
+        "left" => (wx, wy + (wh - h) / 2),
+        "right" => (wx + ww - w, wy + (wh - h) / 2),
+        _ => (wx + (ww - w) / 2, wy),
+    };
+    window
+        .set_position(PhysicalPosition::new(x, y))
+        .map_err(|e| e.to_string())
+}
+
 const AUTOSTART_NAME: &str = "BuddyBay";
 #[cfg(windows)]
 const RUN_KEY: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
@@ -434,7 +458,8 @@ fn main() {
             get_shortcut,
             set_shortcut,
             quit_app,
-            check_update
+            check_update,
+            place_island
         ])
         .run(tauri::generate_context!())
         .expect("chyba pri spusteni BuddyBay");

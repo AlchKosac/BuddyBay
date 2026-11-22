@@ -409,3 +409,122 @@ body {
 .settings button.danger:hover {
   background: rgba(255, 107, 107, 0.15);
 }
+
+/* ---------------------------------------------------------------------------
+   Umístění ostrovu: dole (lišta nad hlavnim panelem) a svisle na levem/pravem okraji.
+   Vychozi je nahore (pravidla vyse). html[data-side] nastavuje main.js.
+--------------------------------------------------------------------------- */
+
+/* Dole: lista zustava u spodni hrany okna, panely vyjizdeji nahoru. */
+html[data-side="bottom"] .island {
+  top: auto;
+  bottom: 0;
+  transform-origin: bottom center;
+  flex-direction: column-reverse;
+  padding-top: 0;
+  padding-bottom: 4px;
+}
+html[data-side="bottom"] .bubble { top: auto; bottom: 96px; }
+html[data-side="bottom"] .settings { top: 0; }
+html[data-side="bottom"] .grip { top: auto; bottom: 0; }
+html[data-side="bottom"] .grip::after { top: auto; bottom: 6px; }
+html[data-side="bottom"] .island.collapsed .bar,
+html[data-side="bottom"] .island.collapsed .bubble { transform: translateY(80%); }
+
+/* Svisle: ostrov je pres celou vysku okna, lista je sloupec u daneho okraje. */
+html[data-side="left"] .island,
+html[data-side="right"] .island {
+  top: 0;
+  bottom: 0;
+  height: 100%;
+  width: 440px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0;
+  padding: 0;
+}
+html[data-side="left"] .island { left: 0; transform: scale(var(--ui-scale, 1)); transform-origin: top left; }
+html[data-side="right"] .island { left: auto; right: 0; transform: scale(var(--ui-scale, 1)); transform-origin: top right; justify-content: flex-end; }
+
+html[data-side="left"] .bar,
+html[data-side="right"] .bar {
+  flex: none;
+  flex-direction: column;
+  align-items: center;
+  width: 96px;
+  min-height: 0;
+  padding: 10px 6px;
+  gap: 8px;
+}
+html[data-side="left"] .buddies,
+html[data-side="right"] .buddies { flex-direction: column; }
+
+/* Prompt a bublina vedle listy (ne pod ni). */
+html[data-side="left"] .bar .prompt,
+html[data-side="right"] .bar .prompt {
+  position: absolute;
+  top: 50%;
+  width: 300px;
+  transform: translateY(-50%);
+}
+html[data-side="left"] .bar .prompt { left: 130px; }
+html[data-side="right"] .bar .prompt { right: 130px; }
+html[data-side="left"] .bubble { left: 130px; top: 40px; max-width: 300px; }
+html[data-side="right"] .bubble { left: auto; right: 130px; top: 40px; max-width: 300px; }
+html[data-side="left"] .settings,
+html[data-side="right"] .settings { top: 0; left: 0; right: 0; }
+
+html[data-side="left"] .grip,
+html[data-side="right"] .grip {
+  top: 50%;
+  left: 0;
+  width: 16px;
+  height: 96px;
+  margin: -48px 0 0 0;
+}
+html[data-side="right"] .grip { left: auto; right: 0; }
+html[data-side="left"] .grip::after,
+html[data-side="right"] .grip::after {
+  top: 50%;
+  left: 6px;
+  width: 4px;
+  height: 56px;
+  margin: -28px 0 0 0;
+}
+html[data-side="right"] .grip::after { left: auto; right: 6px; }
+
+html[data-side="left"] .island.collapsed .bar,
+html[data-side="left"] .island.collapsed .bubble,
+html[data-side="left"] .island.collapsed .bar .prompt { transform: translateX(-80%) translateY(0); }
+html[data-side="right"] .island.collapsed .bar,
+html[data-side="right"] .island.collapsed .bubble,
+html[data-side="right"] .island.collapsed .bar .prompt { transform: translateX(80%) translateY(0); }
+
+/* Monitor v nastaveni: okraje sede, pri najeti se rozsvítí, aktivni je plny akcent. */
+.monitor {
+  position: relative;
+  width: 240px;
+  height: 140px;
+  margin: 4px 0 6px;
+  border: 2px solid var(--muted);
+  border-radius: 8px;
+  opacity: 0.85;
+  box-sizing: border-box;
+}
+.place-btn {
+  position: absolute;
+  padding: 0;
+  border: none;
+  border-radius: 3px;
+  background: var(--muted);
+  opacity: 0.35;
+  cursor: pointer;
+  transition: opacity 150ms ease, background 150ms ease;
+}
+.place-btn:hover,
+.place-btn.active { opacity: 1; background: var(--accent); }
+.place-top { top: 6px; left: 25%; right: 25%; height: 12px; }
+.place-bottom { bottom: 6px; left: 25%; right: 25%; height: 12px; }
+.place-left { left: 6px; top: 25%; bottom: 25%; width: 12px; }
+.place-right { right: 6px; top: 25%; bottom: 25%; width: 12px; }
