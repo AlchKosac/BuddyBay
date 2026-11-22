@@ -266,7 +266,13 @@ fn place_top_center(window: &tauri::WebviewWindow) -> tauri::Result<()> {
 
 /// Umisti ostrov na okraj pracovni plochy (bez hlavniho panelu). Rozmery jsou v logickych px.
 #[tauri::command]
-fn place_island(window: tauri::WebviewWindow, side: String, width: f64, height: f64) -> Result<(), String> {
+fn place_island(
+    window: tauri::WebviewWindow,
+    side: String,
+    width: f64,
+    height: f64,
+    anchor_width: Option<f64>,
+) -> Result<(), String> {
     let monitor = window
         .current_monitor()
         .map_err(|e| e.to_string())?
@@ -275,13 +281,16 @@ fn place_island(window: tauri::WebviewWindow, side: String, width: f64, height: 
     let wa = monitor.work_area();
     let w = (width * scale).round() as i32;
     let h = (height * scale).round() as i32;
+    // Nahore a dole se vystredi sirka listy (bez vysunuteho pole pro text), ne cele okno,
+    // takze se pole roztahne doprava a lista zustane na miste.
+    let a = (anchor_width.unwrap_or(width) * scale).round() as i32;
     let (wx, wy) = (wa.position.x, wa.position.y);
     let (ww, wh) = (wa.size.width as i32, wa.size.height as i32);
     let (x, y) = match side.as_str() {
-        "bottom" => (wx + (ww - w) / 2, wy + wh - h),
+        "bottom" => (wx + (ww - a) / 2, wy + wh - h),
         "left" => (wx, wy + (wh - h) / 2),
         "right" => (wx + ww - w, wy + (wh - h) / 2),
-        _ => (wx + (ww - w) / 2, wy),
+        _ => (wx + (ww - a) / 2, wy),
     };
     window
         .set_position(PhysicalPosition::new(x, y))

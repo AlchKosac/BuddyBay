@@ -268,7 +268,7 @@ function ensureRuntime(buddy) {
     const canvas = document.createElement("canvas");
     canvas.title = buddy.name;
     rt = { canvas, ctx: canvas.getContext("2d"), state: "idle", frame: 0, lastTick: 0, particles: [], fireUntil: 0, lastFire: 0 };
-    canvas.addEventListener("click", () => selectBuddy(buddy.id));
+    canvas.addEventListener("click", () => onBuddyClick(buddy.id));
     runtime.set(buddy.id, rt);
   }
   return rt;
@@ -435,6 +435,8 @@ function renderBar() {
     buddiesEl.appendChild(rt.canvas);
     drawBuddy(buddy, rt);
   }
+  // Pocet buddy meni sirku listy, takze se musi prizpusobit i okno.
+  applySize();
 }
 
 function selectBuddy(id) {
@@ -451,9 +453,92 @@ let bubbleTimer = null;
 function say(text, ms = 4000) {
   bubble.textContent = text;
   bubble.hidden = false;
+  applySize();
   clearTimeout(bubbleTimer);
-  bubbleTimer = setTimeout(() => { bubble.hidden = true; }, ms);
+  bubbleTimer = setTimeout(() => { bubble.hidden = true; applySize(); }, ms);
 }
+
+// --- Chat (vysune se vedle buddy po kliku na nej) -----------------------------
+const chatEl = document.getElementById("chat");
+const chatLogEl = document.getElementById("chat-log");
+const chatTitleEl = document.getElementById("chat-title");
+const chatHistory = {};   // buddyId -> [{role, text}]; jen v pameti, do ulozeni se nedava
+// Vodorovny dock je rozdeleny na dve okna: 1) pole pro text (vyjede z listy doprava),
+// 2) terminal s historii zprav (tlacitko pod nastavenim). Svisly dock ma obe v jednom chatu.
+let chatOpen = false;       // vodorovne: pole pro text; svisle: cely chat
+let terminalOpen = false;   // jen vodorovne: samostatne okno s historii
+let chatBuddyId = null;     // buddy, jehoz pole je otevrene; bez nej se historie bere z vybraneho
+const terminalBtn = document.getElementById("terminal-btn");
+
+function isVertical() {
+  const side = currentSide();
+  return side === "left" || side === "right";
+}
+
+function logBuddyId() { return chatBuddyId ?? selectedId; }
+
+function renderChat() {
+  const id = logBuddyId();
+  const buddy = findBuddy(id);
+  chatTitleEl.textContent = buddy ? buddy.name : "";
+  const items = chatHistory[id] ?? [];
+  chatLogEl.replaceChildren(...items.map((m) => el("div", { className: `msg ${m.role}`, text: m.text })));
+  chatLogEl.scrollTop = chatLogEl.scrollHeight;
+}
+
+/** Promitne stav (pole pro text, terminal) do DOM; panel s historii je videt podle umisteni. */
+function syncChat() {
+  chatEl.hidden = !(isVertical() ? chatOpen : terminalOpen);
+  island.classList.toggle("chat-open", chatOpen);
+  island.classList.toggle("terminal-open", terminalOpen);
+  terminalBtn.classList.toggle("active", terminalOpen);
+  if (!chatEl.hidden) renderChat();
+}
+
+function pushChat(id, role, text) {
+  (chatHistory[id] ??= []).push({ role, text });
+  if (!chatEl.hidden && logBuddyId() === id) renderChat();
+}
+
+function openChat(id) {
+  const buddy = findBuddy(id);
+  if (!buddy) return;
+  chatOpen = true;
+  chatBuddyId = id;
+  if (settingsOpen) { settingsOpen = false; settingsEl.hidden = true; }
+  setCollapsed(false);
+  syncChat();
+  applySize();
+  requestAnimationFrame(() => input.focus());
+}
+
+function closeChat() {
+  chatOpen = false;
+  chatBuddyId = null;
+  syncChat();
+  applySize();
+}
+
+function toggleTerminal() {
+  terminalOpen = !terminalOpen;
+  if (terminalOpen) {
+    if (settingsOpen) { settingsOpen = false; settingsEl.hidden = true; }
+    setCollapsed(false);
+  }
+  syncChat();
+  applySize();
+}
+
+/** Klik na buddy otevre pole pro text; druhy klik na stejneho buddy ho zavre. */
+function onBuddyClick(id) {
+  if (chatOpen && chatBuddyId === id) { closeChat(); return; }
+  selectBuddy(id);
+  openChat(id);
+}
+
+// Krizek v hlavicce: svisle zavira cely chat, vodorovne jen terminal.
+document.getElementById("chat-close").addEventListener("click", () => (isVertical() ? closeChat() : toggleTerminal()));
+terminalBtn.addEventListener("click", toggleTerminal);
 
 // --- Vstup a volani agenta ---------------------------------------------------
 const form = document.getElementById("prompt");
@@ -466,6 +551,7 @@ form.addEventListener("submit", async (e) => {
   const buddy = findBuddy(selectedId);
   if (!text || !buddy) return;
   input.value = "";
+  pushChat(buddy.id, "user", text);
 
   if (!invoke) {
     setPetState("failed", buddy.id);
@@ -492,12 +578,14 @@ form.addEventListener("submit", async (e) => {
     }
     revealIsland();
     say(t("chat.reply", { name: buddy.name, text: reply }), 15000);
+    pushChat(buddy.id, "agent", reply);
     setTimeout(() => setPetState("idle", buddy.id), 6000);
     return;
   } catch (err) {
     setPetState("failed", buddy.id);
     revealIsland();
     say(t("chat.error", { name: buddy.name, error: err }), 8000);
+    pushChat(buddy.id, "error", String(err));
   }
   setTimeout(() => setPetState("idle", buddy.id), 3000);
 });
@@ -549,8 +637,20 @@ function setProvider(buddyId, name) {
 }
 
 // --- Automaticke skryvani a velikost ostrovu ---------------------------------
-function autoHide() {
+const BUDDY_ONLY_KEY = "buddybay.buddyOnly";
+
+/** Rezim, ve kterem je videt jen buddy: bez listy, tlacitek a oken, ovladani pres pravy klik. */
+function buddyOnly() {
+  return storageGet(BUDDY_ONLY_KEY) === "1";
+}
+
+function autoHidePref() {
   return storageGet(AUTO_HIDE_KEY) !== "0";
+}
+
+// Automaticke skryvani plati i v rezimu jen buddy (buddy se schova na uchyt).
+function autoHide() {
+  return autoHidePref();
 }
 
 function uiScale() {
@@ -735,6 +835,7 @@ function buddyCard(b) {
       sizeValue.textContent = `${Math.round(b.scale * 100)} %`;
       sizeCanvas(b, ensureRuntime(b));
       saveBuddies();
+      applySize();
     } },
   });
   const resetBtn = el("button", {
@@ -826,11 +927,15 @@ function renderSettings() {
   }, SKINS.map((s) => el("option", { value: s, text: t(`skin.${s}`), selected: s === currentSkin() })));
 
   const autoHideBox = el("input", {
-    type: "checkbox", checked: autoHide(), "aria-label": t("island.autohide"),
+    type: "checkbox", checked: autoHidePref(), "aria-label": t("island.autohide"),
     on: { change: (e) => {
       storageSet(AUTO_HIDE_KEY, e.target.checked ? "1" : "0");
       if (!e.target.checked) setCollapsed(false);
     } },
+  });
+  const buddyOnlyBox = el("input", {
+    type: "checkbox", checked: buddyOnly(), "aria-label": t("island.buddyOnly"),
+    on: { change: (e) => setBuddyOnly(e.target.checked) },
   });
 
   const scaleValue = uiScale();
@@ -927,6 +1032,7 @@ function renderSettings() {
     section(t("section.placement"), placementPicker()),
     section(t("section.island"),
       el("label", { className: "check" }, [autoHideBox, el("span", { text: t("island.autohide") })]),
+      el("label", { className: "check" }, [buddyOnlyBox, el("span", { text: t("island.buddyOnly") })]),
       el("div", { className: "settings-row-inline" }, [scaleSlider, scaleLabel, uiResetBtn]),
     ),
     section(t("section.demo"), demoBtn),
@@ -963,39 +1069,190 @@ const PLACEMENT_KEY = "buddybay.placement";
 const PLACEMENTS = ["top", "bottom", "left", "right"];
 const VERT_H = 440;        // delka svisleho docku (stejna jako dnesni sirka listy)
 const COLLAPSED_W = 24;    // sirka sbaleneho okna u levého/praveho okraje
+const SETTINGS_SIDE_W = 580; // lista (130 px) + nastaveni (440 px) u levého/praveho okraje
+const CHAT_SIDE_W = 480;     // lista (130 px) + chat (340 px) u levého/praveho okraje
 
 function currentSide() {
   const v = storageGet(PLACEMENT_KEY);
   return PLACEMENTS.includes(v) ? v : "top";
 }
 
-/** Velikost okna pro aktualni stav (logicke px, bez uiScale). */
+const bar = island.querySelector(".bar");
+const CHAT_MIN_W = 360;      // nejmensi sirka chatu nahore/dole
+const SETTINGS_MIN_W = 440;  // nejmensi sirka nastaveni nahore/dole
+
+/** Pole pro text: u vodorovneho docku v liste (vyjede doprava), u svisleho v chatu. */
+function placePrompt() {
+  const vertical = currentSide() === "left" || currentSide() === "right";
+  const target = vertical ? chatEl : bar;
+  if (form.parentElement === target) return;
+  if (vertical) chatEl.appendChild(form);
+  else bar.insertBefore(form, bar.querySelector(".btn-col"));
+}
+
+/**
+ * Velikost okna pro aktualni stav (logicke px, bez uiScale).
+ * anchor = sirka listy bez pole pro text; podle ni se okno vystredi, takze se pole
+ * roztahne doprava a lista zustane na miste.
+ */
 function windowBox() {
   const side = currentSide();
   if (side === "left" || side === "right") {
     if (collapsed) return { w: COLLAPSED_W, h: VERT_H };
-    return { w: WINDOW_W, h: settingsOpen ? SETTINGS_H : VERT_H };
+    // Panel (nastaveni nebo chat) je vedle listy (130 px), okno je proto sirsi.
+    if (settingsOpen) return { w: SETTINGS_SIDE_W, h: SETTINGS_H };
+    if (chatOpen) return { w: CHAT_SIDE_W, h: VERT_H };
+    return { w: WINDOW_W, h: VERT_H };
   }
-  return { w: WINDOW_W, h: settingsOpen ? SETTINGS_H : (collapsed ? COLLAPSED_H : EXPANDED_H) };
+  // Sirka listy se ridi poctem buddy (a polem pro text, kdyz je otevreny chat).
+  const full = island.offsetWidth;
+  const promptShown = form.parentElement === bar && form.offsetParent !== null;
+  const gap = parseFloat(getComputedStyle(bar).columnGap) || 0;
+  const anchor = full - (promptShown ? form.offsetWidth + gap : 0);
+  // Sbaleny ostrov (i s otevrenym terminalem) zabira jen uzky pruh nahore.
+  if (collapsed && !settingsOpen) return { w: full, h: COLLAPSED_H, anchor };
+  const bubbleW = bubble.hidden ? 0 : bubble.offsetLeft + bubble.offsetWidth;
+  let w = Math.max(full, bubbleW, menuOpen ? MENU_MIN_W : 0);
+  let h = EXPANDED_H;
+  if (settingsOpen) { w = Math.max(w, SETTINGS_MIN_W); h = SETTINGS_H; }
+  else if (terminalOpen) { w = Math.max(w, CHAT_MIN_W, termW ?? 0); h = termH + TERM_PAD; }
+  return { w, h, anchor };
 }
+
+// --- Nabidka na pravy klik (nahrazuje vychozi nabidku prohlizece) -------------
+const MENU_MIN_W = 200;
+const menuEl = el("div", { className: "ctx-menu", role: "menu" });
+menuEl.hidden = true;
+island.appendChild(menuEl);
+let menuOpen = false;
+
+function closeMenu() {
+  if (!menuOpen) return;
+  menuOpen = false;
+  menuEl.hidden = true;
+  applySize();
+}
+
+function openMenu() {
+  const items = [
+    [t("settings.open"), toggleSettings],
+    ...(isVertical() ? [] : [[t("terminal.toggle"), toggleTerminal]]),
+    [buddyOnly() ? t("menu.showBar") : t("menu.buddyOnly"), () => setBuddyOnly(!buddyOnly())],
+  ];
+  menuEl.replaceChildren(...items.map(([label, fn]) => el("button", {
+    type: "button", role: "menuitem", text: label,
+    on: { click: () => { closeMenu(); fn(); } },
+  })));
+  // Vodorovne pod listou (nad ni u docku dole); svisle ho umisti CSS vedle listy.
+  const side = currentSide();
+  menuEl.style.top = menuEl.style.bottom = "";
+  if (side === "top") menuEl.style.top = `${bar.offsetTop + bar.offsetHeight + 6}px`;
+  if (side === "bottom") menuEl.style.bottom = `${island.offsetHeight - bar.offsetTop + 6}px`;
+  setCollapsed(false);
+  menuOpen = true;
+  menuEl.hidden = false;
+  applySize();
+}
+
+function setBuddyOnly(on) {
+  storageSet(BUDDY_ONLY_KEY, on ? "1" : "0");
+  document.documentElement.toggleAttribute("data-buddyonly", on);
+  if (on) { clearTimeout(collapseTimer); setCollapsed(false); }
+  closeMenu();
+  applySize();
+  if (settingsOpen) renderSettings();
+}
+
+island.addEventListener("contextmenu", (e) => {
+  e.preventDefault();
+  if (menuOpen) closeMenu(); else openMenu();
+});
+// Mimo nabidku, Esc nebo ztrata focusu ji zavre.
+document.addEventListener("pointerdown", (e) => { if (menuOpen && !menuEl.contains(e.target)) closeMenu(); });
+window.addEventListener("keydown", (e) => { if (e.key === "Escape") closeMenu(); });
+window.addEventListener("blur", closeMenu);
+
+// --- Zmena velikosti terminalu tazenim okraje (vodorovny dock) ----------------
+const TERM_W_KEY = "buddybay.termW";
+const TERM_H_KEY = "buddybay.termH";
+const TERM_H_DEFAULT = 236;
+const TERM_H_MIN = 120;
+const TERM_H_MAX = 700;
+const TERM_W_MAX = 1000;
+const TERM_PAD = 104;   // misto pro listu a okraje okolo panelu s historii
+
+const clampNum = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+let termH = clampNum(Number(storageGet(TERM_H_KEY)) || TERM_H_DEFAULT, TERM_H_MIN, TERM_H_MAX);
+const storedW = Number(storageGet(TERM_W_KEY));
+let termW = storedW ? clampNum(storedW, CHAT_MIN_W, TERM_W_MAX) : null;   // null = sirka listy
+let termResizing = false;
+
+function applyTermSize() {
+  const root = document.documentElement.style;
+  root.setProperty("--term-h", `${termH}px`);
+  if (termW) root.setProperty("--term-w", `${termW}px`);
+  else root.removeProperty("--term-w");
+}
+
+function startTermResize(axis, e) {
+  e.preventDefault();
+  const handle = e.currentTarget;
+  handle.setPointerCapture(e.pointerId);
+  termResizing = true;
+  const s = uiScale();
+  const startX = e.screenX;
+  const startY = e.screenY;
+  const startH = termH;
+  const startW = termW ?? chatEl.offsetWidth;
+  const grow = currentSide() === "bottom" ? -1 : 1;   // dole se panel zvetsuje smerem nahoru
+  const move = (ev) => {
+    // Obrazovkove souradnice, protoze okno se behem tazeni meni a posouva.
+    if (axis === "y") termH = clampNum(Math.round(startH + ((ev.screenY - startY) / s) * grow), TERM_H_MIN, TERM_H_MAX);
+    else termW = clampNum(Math.round(startW + (ev.screenX - startX) / s), CHAT_MIN_W, TERM_W_MAX);
+    applyTermSize();
+    applySize();
+  };
+  const done = () => {
+    handle.removeEventListener("pointermove", move);
+    handle.removeEventListener("pointerup", done);
+    handle.removeEventListener("pointercancel", done);
+    termResizing = false;
+    storageSet(TERM_H_KEY, String(termH));
+    if (termW) storageSet(TERM_W_KEY, String(termW));
+  };
+  handle.addEventListener("pointermove", move);
+  handle.addEventListener("pointerup", done);
+  handle.addEventListener("pointercancel", done);
+}
+
+document.getElementById("chat-resize-y").addEventListener("pointerdown", (e) => startTermResize("y", e));
+document.getElementById("chat-resize-x").addEventListener("pointerdown", (e) => startTermResize("x", e));
+
+let lastSizeKey = "";
 
 function applySize() {
   if (!appWindow || !LogicalSizeCtor) return;
   const s = uiScale();
-  const { w, h } = windowBox();
+  const side = currentSide();
+  const { w, h, anchor } = windowBox();
   const W = Math.round(w * s);
   const H = Math.round(h * s);
+  const A = Math.round((anchor ?? w) * s);
+  const key = `${side}|${W}|${H}|${A}`;
+  if (key === lastSizeKey) return;
+  lastSizeKey = key;
   appWindow.setSize(new LogicalSizeCtor(W, H))
-    .then(() => (invoke ? invoke("place_island", { side: currentSide(), width: W, height: H }) : null))
-    .catch(() => {});
+    .then(() => (invoke ? invoke("place_island", { side, width: W, height: H, anchorWidth: A }) : null))
+    .catch(() => { lastSizeKey = ""; });
 }
 
 function setPlacement(side) {
   const s = PLACEMENTS.includes(side) ? side : "top";
   storageSet(PLACEMENT_KEY, s);
   document.documentElement.dataset.side = s;
+  placePrompt();
+  syncChat();
   setCollapsed(false);
-  applySize();
   renderBar();
   if (settingsOpen) renderSettings();
 }
@@ -1015,7 +1272,7 @@ function revealIsland() {
   clearTimeout(collapseTimer);
   setCollapsed(false);
   collapseTimer = setTimeout(() => {
-    if (island.matches(":hover") || document.activeElement === input || settingsOpen) return;
+    if (island.matches(":hover") || document.activeElement === input || settingsOpen || termResizing) return;
     setCollapsed(true);
   }, REPLY_OPEN_MS);
 }
@@ -1024,6 +1281,8 @@ function toggleSettings() {
   settingsOpen = !settingsOpen;
   settingsEl.hidden = !settingsOpen;
   if (settingsOpen) {
+    terminalOpen = false;
+    if (chatOpen) closeChat(); else syncChat();
     setCollapsed(false);
     renderSettings();
   }
@@ -1051,14 +1310,22 @@ island.addEventListener("mouseleave", () => {
   if (!autoHide()) return;
   collapseTimer = setTimeout(() => {
     // Nesbalovat, dokud uzivatel pise nebo ma otevrene nastaveni.
-    if (document.activeElement === input || settingsOpen || !autoHide()) return;
+    if (settingsOpen || termResizing || !autoHide()) return;
+    // Prazdne pole s fokusem nebrani skryti: fokus se uvolni.
+    if (document.activeElement === input) {
+      if (input.value.trim()) return;
+      input.blur();
+    }
     setCollapsed(true);
   }, COLLAPSE_DELAY_MS);
 });
 
-input.addEventListener("blur", () => {
-  if (autoHide() && !island.matches(":hover") && !settingsOpen) setCollapsed(true);
-});
+// Ztrata focusu (pole pro text i cele okno) sbali ostrov stejne jako bez otevreneho terminalu.
+function collapseOnFocusLoss() {
+  if (autoHide() && !island.matches(":hover") && !settingsOpen && !termResizing) setCollapsed(true);
+}
+input.addEventListener("blur", collapseOnFocusLoss);
+window.addEventListener("blur", collapseOnFocusLoss);
 
 // --- Zkratky -----------------------------------------------------------------
 window.addEventListener("keydown", (e) => {
@@ -1077,6 +1344,9 @@ window.addEventListener("keydown", (e) => {
 function startApp() {
   applyStaticTexts();
   document.documentElement.dataset.side = currentSide();
+  document.documentElement.toggleAttribute("data-buddyonly", buddyOnly());
+  applyTermSize();
+  placePrompt();
   document.documentElement.style.setProperty("--ui-scale", String(uiScale()));
   applySystemTheme();
   refreshAutostart();

@@ -30,10 +30,11 @@ body {
 .island {
   position: absolute;
   top: 0;
-  left: 50%;
-  transform: translateX(-50%) scale(var(--ui-scale, 1));
-  transform-origin: top center;
-  width: 440px;
+  left: 0;
+  transform: scale(var(--ui-scale, 1));
+  transform-origin: top left;
+  /* Sirka se ridi poctem buddy; okno ji meri v main.js (windowBox). */
+  width: max-content;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -116,6 +117,33 @@ body {
 .prompt {
   flex: 1;
   min-width: 0;
+}
+
+/* Vodorovne: pole pro text je v liste, skryte; po kliku na buddy vyjede doprava
+   a lista se o jeho sirku roztahne. Rozmer je hned konecny, animace je jen vizualni. */
+.bar > .prompt {
+  display: none;
+  flex: none;
+  width: 260px;
+}
+.island.chat-open .bar > .prompt {
+  display: block;
+  animation: prompt-out 200ms ease-out;
+}
+@keyframes prompt-out {
+  from { clip-path: inset(0 100% 0 0); transform: translateX(-24px); opacity: 0; }
+  to { clip-path: inset(0 0 0 0); transform: none; opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .island.chat-open .bar > .prompt { animation: none; }
+}
+
+/* Tlacitka u praveho kraje listy: pod sebou (nastaveni, pozdeji dalsi). */
+.btn-col {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: none;
 }
 
 .prompt input {
@@ -209,9 +237,21 @@ body {
   padding: 0;
 }
 
-.icon-btn:hover {
+.icon-btn:hover,
+.icon-btn.active {
   border-color: var(--accent);
 }
+
+.icon-btn.active { color: var(--accent); }
+
+#terminal-btn {
+  font: 700 12px Consolas, monospace;
+  letter-spacing: -0.04em;
+}
+
+/* Svisle je historie v jednom okne s polem pro text, terminal se tam nepouziva. */
+html[data-side="left"] #terminal-btn,
+html[data-side="right"] #terminal-btn { display: none; }
 
 /* Panel nastaveni pod listou */
 .settings {
@@ -320,7 +360,8 @@ body {
 }
 
 /* Scrollbar nastaveni (vychozi, skiny ho prepisuji) */
-.settings {
+.settings,
+.chat-log {
   scrollbar-width: thin;
   scrollbar-color: var(--muted) transparent;
 }
@@ -419,13 +460,14 @@ body {
 html[data-side="bottom"] .island {
   top: auto;
   bottom: 0;
-  transform-origin: bottom center;
+  transform-origin: bottom left;
   flex-direction: column-reverse;
   padding-top: 0;
   padding-bottom: 4px;
 }
 html[data-side="bottom"] .bubble { top: auto; bottom: 96px; }
-html[data-side="bottom"] .settings { top: 0; }
+/* Nastaveni se otevre nad listu, takze lista (a utok na ni) zustava videt. */
+html[data-side="bottom"] .settings { top: auto; bottom: 84px; }
 html[data-side="bottom"] .grip { top: auto; bottom: 0; }
 html[data-side="bottom"] .grip::after { top: auto; bottom: 6px; }
 html[data-side="bottom"] .island.collapsed .bar,
@@ -436,7 +478,8 @@ html[data-side="left"] .island,
 html[data-side="right"] .island {
   top: 0;
   bottom: 0;
-  height: 100%;
+  /* Ostrov se skaluje, proto vyska okna / meritko; jinak chat pretece pres spodni hranu okna. */
+  height: calc(100% / var(--ui-scale, 1));
   width: 440px;
   flex-direction: row;
   align-items: center;
@@ -460,20 +503,12 @@ html[data-side="right"] .bar {
 html[data-side="left"] .buddies,
 html[data-side="right"] .buddies { flex-direction: column; }
 
-/* Prompt a bublina vedle listy (ne pod ni). */
-html[data-side="left"] .bar .prompt,
-html[data-side="right"] .bar .prompt {
-  position: absolute;
-  top: 50%;
-  width: 300px;
-  transform: translateY(-50%);
-}
-html[data-side="left"] .bar .prompt { left: 130px; }
-html[data-side="right"] .bar .prompt { right: 130px; }
+/* Bublina vedle listy (ne pod ni). Pole pro text je u svisleho docku v chatu. */
 html[data-side="left"] .bubble { left: 130px; top: 40px; max-width: 300px; }
 html[data-side="right"] .bubble { left: auto; right: 130px; top: 40px; max-width: 300px; }
-html[data-side="left"] .settings,
-html[data-side="right"] .settings { top: 0; left: 0; right: 0; }
+/* Nastaveni vedle listy, ne pres ni: lista zustava videt. */
+html[data-side="left"] .settings { top: 0; left: 130px; right: auto; width: 440px; }
+html[data-side="right"] .settings { top: 0; right: 130px; left: auto; width: 440px; }
 
 html[data-side="left"] .grip,
 html[data-side="right"] .grip {
@@ -495,11 +530,9 @@ html[data-side="right"] .grip::after {
 html[data-side="right"] .grip::after { left: auto; right: 6px; }
 
 html[data-side="left"] .island.collapsed .bar,
-html[data-side="left"] .island.collapsed .bubble,
-html[data-side="left"] .island.collapsed .bar .prompt { transform: translateX(-80%) translateY(0); }
+html[data-side="left"] .island.collapsed .bubble { transform: translateX(-80%) translateY(0); }
 html[data-side="right"] .island.collapsed .bar,
-html[data-side="right"] .island.collapsed .bubble,
-html[data-side="right"] .island.collapsed .bar .prompt { transform: translateX(80%) translateY(0); }
+html[data-side="right"] .island.collapsed .bubble { transform: translateX(80%) translateY(0); }
 
 /* Monitor v nastaveni: okraje sede, pri najeti se rozsvítí, aktivni je plny akcent. */
 .monitor {
@@ -528,3 +561,141 @@ html[data-side="right"] .island.collapsed .bar .prompt { transform: translateX(8
 .place-bottom { bottom: 6px; left: 25%; right: 25%; height: 12px; }
 .place-left { left: 6px; top: 25%; bottom: 25%; width: 12px; }
 .place-right { right: 6px; top: 25%; bottom: 25%; width: 12px; }
+
+/* ---------------------------------------------------------------------------
+   Chat: panel vedle listy, skryty dokud se neklikne na buddy.
+   Nahore/dole vyjizdi pod/nad listu, levy/pravy okraj vedle listy.
+--------------------------------------------------------------------------- */
+.chat {
+  position: absolute;
+  top: 96px;
+  left: 0;
+  right: 0;
+  /* Velikost terminalu se meni tazenim okraje (promenne nastavuje main.js). */
+  width: var(--term-w, auto);
+  height: var(--term-h, 236px);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  background: var(--island-bg);
+  border: 1px solid var(--island-border);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(12px);
+  z-index: 2;
+}
+.chat[hidden] { display: none; }
+.chat-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.chat-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+.chat-log {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+}
+.msg {
+  max-width: 88%;
+  padding: 6px 10px;
+  border-radius: 10px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+.msg.user { align-self: flex-end; background: rgba(127, 127, 140, 0.22); }
+.msg.agent { align-self: flex-start; background: rgba(127, 127, 140, 0.12); }
+.msg.error { align-self: flex-start; color: #ff6b6b; }
+.chat > .prompt { flex: none; display: block; width: auto; }
+
+/* Vodorovne: panely maji aspon tolik, aby byl chat i nastaveni citelny, i kdyz je lista uzka. */
+.chat { min-width: 360px; }
+.settings { min-width: 440px; }
+html[data-side="left"] .chat,
+html[data-side="right"] .chat { min-width: 0; }
+
+/* Dole: chat nad listou. */
+html[data-side="bottom"] .chat { top: auto; bottom: 84px; }
+
+/* Rezim jen buddy: bez pozadi listy, knoflíku a tlacitek; ovladani je v nabidce na pravy klik.
+   Selektor je zamerne silnejsi nez pravidla skinu. */
+:root[data-buddyonly] .island .bar {
+  background: none;
+  border-color: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  min-height: 0;
+  padding: 0;
+}
+:root[data-buddyonly] .island .bar::before { display: none; }
+/* Buddy bez ramecku: zadny podklad ani obrys vybraneho. Selektor je silnejsi nez pravidla skinu. */
+:root[data-buddyonly] .island .buddies canvas,
+:root[data-buddyonly] .island .buddies canvas.selected {
+  background: none;
+  outline: none;
+  border-radius: 0;
+}
+:root[data-buddyonly] .island .btn-col { display: none; }
+
+/* Nabidka na pravy klik */
+.ctx-menu {
+  position: absolute;
+  top: 72px;
+  left: 0;
+  z-index: 5;
+  min-width: 170px;
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+  background: var(--island-bg);
+  border: 1px solid var(--island-border);
+  border-radius: 12px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.3);
+}
+.ctx-menu[hidden] { display: none; }
+.ctx-menu button {
+  text-align: left;
+  padding: 7px 10px;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.ctx-menu button:hover { background: rgba(127, 127, 140, 0.2); color: var(--accent); }
+html[data-side="left"] .ctx-menu { top: 40px; left: 110px; }
+html[data-side="right"] .ctx-menu { top: 40px; left: auto; right: 110px; }
+
+/* Okraje pro zmenu velikosti terminalu: svisly (vzdalenejsi od listy) a pravy. */
+.chat-resize-y,
+.chat-resize-x { position: absolute; z-index: 4; touch-action: none; }
+.chat-resize-y { left: 8px; right: 8px; bottom: -3px; height: 9px; cursor: ns-resize; }
+html[data-side="bottom"] .chat-resize-y { bottom: auto; top: -3px; }
+.chat-resize-x { top: 8px; bottom: 8px; right: -2px; width: 9px; cursor: ew-resize; }
+html[data-side="left"] .chat-resize-y,
+html[data-side="right"] .chat-resize-y,
+html[data-side="left"] .chat-resize-x,
+html[data-side="right"] .chat-resize-x { display: none; }
+
+/* Sbaleny ostrov schova i terminal. Odpoved je v historii, bublina by ji jen zakryvala. */
+.island.collapsed .chat { display: none; }
+.island.terminal-open .bubble,
+html[data-side="left"] .island.chat-open .bubble,
+html[data-side="right"] .island.chat-open .bubble { display: none; }
+
+/* Svisle: chat vedle listy (130 px od okraje), na celou vysku. */
+html[data-side="left"] .chat { top: 0; bottom: 0; left: 130px; right: auto; width: 340px; height: auto; }
+html[data-side="right"] .chat { top: 0; bottom: 0; right: 130px; left: auto; width: 340px; height: auto; }

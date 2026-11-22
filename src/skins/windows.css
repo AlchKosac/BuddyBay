@@ -32,7 +32,8 @@
   border-radius: 8px;
 }
 
-:root[data-skin="windows"] .settings {
+:root[data-skin="windows"] .settings,
+:root[data-skin="windows"] .chat-log {
   scrollbar-color: var(--accent) transparent;
   scrollbar-width: thin;
 }

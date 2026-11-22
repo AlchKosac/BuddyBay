@@ -19,9 +19,21 @@
       <form id="prompt" class="prompt" autocomplete="off">
         <input id="prompt-input" type="text" data-i18n-placeholder="prompt.placeholder" />
       </form>
-      <button id="settings-btn" class="icon-btn" type="button" data-i18n-aria="settings.open" data-i18n-title="settings.open">⚙</button>
+      <div class="btn-col">
+        <button id="settings-btn" class="icon-btn" type="button" data-i18n-aria="settings.open" data-i18n-title="settings.open">⚙</button>
+        <button id="terminal-btn" class="icon-btn" type="button" data-i18n-aria="terminal.toggle" data-i18n-title="terminal.toggle">&gt;_</button>
+      </div>
     </div>
     <div id="settings" class="settings" hidden></div>
+    <div id="chat" class="chat" hidden>
+      <div class="chat-head">
+        <span id="chat-title" class="chat-title"></span>
+        <button id="chat-close" class="icon-btn" type="button" data-i18n-aria="chat.close" data-i18n-title="chat.close">×</button>
+      </div>
+      <div id="chat-log" class="chat-log"></div>
+      <div id="chat-resize-y" class="chat-resize-y"></div>
+      <div id="chat-resize-x" class="chat-resize-x"></div>
+    </div>
   </div>
   <script src="main.js"></script>
 </body>
