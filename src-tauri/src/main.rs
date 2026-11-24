@@ -78,7 +78,14 @@ fn base(config: &AgentConfig) -> &str {
     config.base_url.trim_end_matches('/')
 }
 
-async fn ask_ollama(config: &AgentConfig, prompt: &str) -> Result<String, String> {
+/// Pocet tokenu z odpovedi providera (0, kdyz ho server nevrati).
+#[derive(Default, Clone, Copy)]
+struct Usage {
+    input: u64,
+    output: u64,
+}
+
+async fn ask_ollama(config: &AgentConfig, prompt: &str) -> Result<(String, Usage), String> {
     let body = serde_json::json!({
         "model": config.model,
         "messages": [
@@ -98,13 +105,18 @@ async fn ask_ollama(config: &AgentConfig, prompt: &str) -> Result<String, String
         return Err(format!("Ollama returned status {}", resp.status()));
     }
     let v: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
-    v["message"]["content"]
+    let usage = Usage {
+        input: v["prompt_eval_count"].as_u64().unwrap_or(0),
+        output: v["eval_count"].as_u64().unwrap_or(0),
+    };
+    let text = v["message"]["content"]
         .as_str()
         .map(|s| s.trim().to_string())
-        .ok_or_else(|| "Unexpected response from Ollama".to_string())
+        .ok_or_else(|| "Unexpected response from Ollama".to_string())?;
+    Ok((text, usage))
 }
 
-async fn ask_anthropic(config: &AgentConfig, prompt: &str) -> Result<String, String> {
+async fn ask_anthropic(config: &AgentConfig, prompt: &str) -> Result<(String, Usage), String> {
     let key = match api_key(config)? {
         Some(k) => k,
         None => std::env::var("ANTHROPIC_API_KEY").map_err(|_| "Environment variable ANTHROPIC_API_KEY is not set".to_string())?,
@@ -128,13 +140,18 @@ async fn ask_anthropic(config: &AgentConfig, prompt: &str) -> Result<String, Str
         return Err(format!("Cloud API returned status {}", resp.status()));
     }
     let v: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
-    v["content"][0]["text"]
+    let usage = Usage {
+        input: v["usage"]["input_tokens"].as_u64().unwrap_or(0),
+        output: v["usage"]["output_tokens"].as_u64().unwrap_or(0),
+    };
+    let text = v["content"][0]["text"]
         .as_str()
         .map(|s| s.trim().to_string())
-        .ok_or_else(|| "Unexpected response from the cloud API".to_string())
+        .ok_or_else(|| "Unexpected response from the cloud API".to_string())?;
+    Ok((text, usage))
 }
 
-async fn ask_openai(config: &AgentConfig, prompt: &str) -> Result<String, String> {
+async fn ask_openai(config: &AgentConfig, prompt: &str) -> Result<(String, Usage), String> {
     let body = serde_json::json!({
         "model": config.model,
         "temperature": config.temperature,
@@ -158,20 +175,52 @@ async fn ask_openai(config: &AgentConfig, prompt: &str) -> Result<String, String
         return Err(format!("Server returned status {}", resp.status()));
     }
     let v: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
-    v["choices"][0]["message"]["content"]
+    let usage = Usage {
+        input: v["usage"]["prompt_tokens"].as_u64().unwrap_or(0),
+        output: v["usage"]["completion_tokens"].as_u64().unwrap_or(0),
+    };
+    let text = v["choices"][0]["message"]["content"]
         .as_str()
         .map(|s| s.trim().to_string())
-        .ok_or_else(|| "Unexpected response from the server".to_string())
+        .ok_or_else(|| "Unexpected response from the server".to_string())?;
+    Ok((text, usage))
 }
 
-/// Posle zadani uzivatele podle parametru pripojeni a vrati text odpovedi (vcetne znacky nalady).
+/// Odpoved agenta: text (vcetne znacky nalady) a pocet tokenu, ktere provider spotreboval.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentReply {
+    text: String,
+    input_tokens: u64,
+    output_tokens: u64,
+}
+
+/// Posle zadani uzivatele podle parametru pripojeni a vrati odpoved s pocty tokenu.
 #[tauri::command]
-async fn ask_agent(prompt: String, config: AgentConfig) -> Result<String, String> {
-    match config.provider.as_str() {
-        "anthropic" => ask_anthropic(&config, &prompt).await,
-        "openai" => ask_openai(&config, &prompt).await,
-        _ => ask_ollama(&config, &prompt).await,
+async fn ask_agent(prompt: String, config: AgentConfig) -> Result<AgentReply, String> {
+    let (text, usage) = match config.provider.as_str() {
+        "anthropic" => ask_anthropic(&config, &prompt).await?,
+        "openai" => ask_openai(&config, &prompt).await?,
+        _ => ask_ollama(&config, &prompt).await?,
+    };
+    Ok(AgentReply { text, input_tokens: usage.input, output_tokens: usage.output })
+}
+
+/// Otevre samostatne okno se spotrebou tokenu (data jsou v localStorage sdilenem s hlavnim oknem).
+#[tauri::command]
+async fn open_usage_window(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(win) = app.get_webview_window("usage") {
+        win.show().map_err(|e| e.to_string())?;
+        win.set_focus().map_err(|e| e.to_string())?;
+        return Ok(());
     }
+    tauri::WebviewWindowBuilder::new(&app, "usage", tauri::WebviewUrl::App("usage.html".into()))
+        .title("BuddyBay: spotřeba tokenů")
+        .inner_size(460.0, 420.0)
+        .resizable(true)
+        .build()
+        .map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 /// Seznam modelu pro dany server (Ollama /api/tags, OpenAI-kompatibilni /models).
@@ -468,7 +517,8 @@ fn main() {
             set_shortcut,
             quit_app,
             check_update,
-            place_island
+            place_island,
+            open_usage_window
         ])
         .run(tauri::generate_context!())
         .expect("chyba pri spusteni BuddyBay");

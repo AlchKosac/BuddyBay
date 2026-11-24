@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>BuddyBay: token usage</title>
+  <style>
+    :root { --bg: #f6f7fa; --text: #1d2130; --muted: #6b7286; --line: rgba(0, 0, 0, 0.1); --accent: #b07a1a; }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) { --bg: #16181f; --text: #e9ecf3; --muted: #8a92a6; --line: rgba(255, 255, 255, 0.1); --accent: #f2b84b; }
+    }
+    html, body { margin: 0; background: var(--bg); color: var(--text); font-family: "Segoe UI", system-ui, sans-serif; }
+    body { padding: 16px; box-sizing: border-box; }
+    h1 { font-size: 18px; font-weight: 600; margin: 0 0 4px; }
+    .note { font-size: 12px; color: var(--muted); margin: 0 0 14px; line-height: 1.5; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { text-align: right; padding: 7px 4px; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+    th { color: var(--muted); font-weight: 500; font-size: 12px; }
+    th:first-child, td:first-child { text-align: left; }
+    tfoot td { font-weight: 600; color: var(--accent); border-bottom: none; padding-top: 10px; }
+    .empty { color: var(--muted); font-size: 13px; padding: 12px 0; }
+  </style>
+</head>
+<body>
+  <h1>Token usage</h1>
+  <p class="note">Counts come from each answer the API returned. A subscription balance is not available through the API, so it is not shown here.</p>
+  <table>
+    <thead>
+      <tr>
+        <th>Buddy</th>
+        <th>Today in</th>
+        <th>Today out</th>
+        <th>7 days in</th>
+        <th>7 days out</th>
+        <th>Calls (7 days)</th>
+      </tr>
+    </thead>
+    <tbody id="rows"></tbody>
+    <tfoot id="total"></tfoot>
+  </table>
+  <p id="empty" class="empty" hidden>No usage recorded yet. Ask a buddy something.</p>
+  <script>
+    // Data jsou v localStorage sdilenem s hlavnim oknem (stejny puvod); ctou se jen pro zobrazeni.
+    const USAGE_KEY = "buddybay.usage";
+    const BUDDIES_KEY = "buddybay.buddies";
+
+    function read(key) {
+      try { return JSON.parse(localStorage.getItem(key) ?? "null"); } catch (_) { return null; }
+    }
+    function dayKey(date) {
+      const p = (n) => String(n).padStart(2, "0");
+      return `${date.getFullYear()}-${p(date.getMonth() + 1)}-${p(date.getDate())}`;
+    }
+    function lastDays(n) {
+      const out = [];
+      const now = new Date();
+      for (let i = 0; i < n; i++) {
+        const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+        out.push(dayKey(d));
+      }
+      return out;
+    }
+    function cell(text) {
+      const td = document.createElement("td");
+      td.textContent = text;
+      return td;
+    }
+    function render() {
+      const usage = read(USAGE_KEY) ?? {};
+      const buddies = read(BUDDIES_KEY) ?? [];
+      const names = Object.fromEntries(buddies.map((b) => [b.id, b.name]));
+      const today = dayKey(new Date());
+      const week = lastDays(7);
+      const rows = document.getElementById("rows");
+      rows.replaceChildren();
+      const total = { tIn: 0, tOut: 0, wIn: 0, wOut: 0, calls: 0 };
+      const ids = Object.keys(usage);
+      for (const id of ids) {
+        const byDay = usage[id] ?? {};
+        const t = byDay[today] ?? { in: 0, out: 0 };
+        let wIn = 0, wOut = 0, calls = 0;
+        for (const d of week) {
+          const x = byDay[d];
+          if (!x) continue;
+          wIn += x.in; wOut += x.out; calls += x.calls;
+        }
+        total.tIn += t.in; total.tOut += t.out; total.wIn += wIn; total.wOut += wOut; total.calls += calls;
+        const tr = document.createElement("tr");
+        tr.append(
+          cell(names[id] ?? "(deleted buddy)"),
+          cell(t.in.toLocaleString()), cell((t.out ?? 0).toLocaleString()),
+          cell(wIn.toLocaleString()), cell(wOut.toLocaleString()), cell(calls.toLocaleString()),
+        );
+        rows.appendChild(tr);
+      }
+      const foot = document.getElementById("total");
+      foot.replaceChildren();
+      if (ids.length) {
+        const tr = document.createElement("tr");
+        tr.append(
+          cell("Total"),
+          cell(total.tIn.toLocaleString()), cell(total.tOut.toLocaleString()),
+          cell(total.wIn.toLocaleString()), cell(total.wOut.toLocaleString()), cell(total.calls.toLocaleString()),
+        );
+        foot.appendChild(tr);
+      }
+      document.getElementById("empty").hidden = ids.length > 0;
+    }
+
+    window.addEventListener("storage", (e) => { if (e.key === USAGE_KEY || e.key === BUDDIES_KEY) render(); });
+    render();
+    setInterval(render, 5000);
+  </script>
+</body>
+</html>

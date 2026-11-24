@@ -187,6 +187,29 @@ const BUDDY_PROMPT_DEFAULT = "Jsi buddy, malý společník, který žije na liš
   "Mluv přátelsky a s lehkým humorem, drž se krátkých odpovědí a neber sebe moc vážně.";
 
 const BUDDIES_KEY = "buddybay.buddies";
+const USAGE_KEY = "buddybay.usage";
+
+// --- Spotreba tokenu: pocty z odpovedi API, ulozene po dnech za kazdeho buddy --------
+function usageDay(date = new Date()) {
+  const p = (n) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${p(date.getMonth() + 1)}-${p(date.getDate())}`;
+}
+
+function loadUsage() {
+  try { return JSON.parse(storageGet(USAGE_KEY) ?? "{}") ?? {}; } catch (_) { return {}; }
+}
+
+/** Pricte tokeny z jedne odpovedi k dnesnimu dni daneho buddy. */
+function recordUsage(buddyId, inputTokens, outputTokens) {
+  const u = loadUsage();
+  const day = usageDay();
+  const byDay = (u[buddyId] ??= {});
+  const d = (byDay[day] ??= { in: 0, out: 0, calls: 0 });
+  d.in += Number(inputTokens) || 0;
+  d.out += Number(outputTokens) || 0;
+  d.calls += 1;
+  storageSet(USAGE_KEY, JSON.stringify(u));
+}
 const AUTO_HIDE_KEY = "buddybay.autoHide";
 const UI_SCALE_KEY = "buddybay.uiScale";
 const UI_SCALE_DEFAULT = 1;
@@ -562,7 +585,9 @@ form.addEventListener("submit", async (e) => {
   setPetState("running", buddy.id);
   say(t("chat.thinking", { name: buddy.name }), 60000);
   try {
-    const raw = await invoke("ask_agent", { prompt: text, config: buddy.connection });
+    const res = await invoke("ask_agent", { prompt: text, config: buddy.connection });
+    const raw = res.text;
+    recordUsage(buddy.id, res.inputTokens, res.outputTokens);
     // Model na konci vrati znacku nalady [nalada:X]; ta se vytahne a zbytek je text.
     const m = raw.match(/\[nalada:\s*([a-z]+)\s*\]\s*$/i);
     const reply = raw.replace(/\s*\[nalada:[^\]]*\]\s*$/i, "").trim();
@@ -1035,6 +1060,13 @@ function renderSettings() {
       el("label", { className: "check" }, [buddyOnlyBox, el("span", { text: t("island.buddyOnly") })]),
       el("div", { className: "settings-row-inline" }, [scaleSlider, scaleLabel, uiResetBtn]),
     ),
+    section(t("section.usage"), el("button", {
+      type: "button", text: t("usage.open"),
+      on: { click: () => {
+        if (!invoke) { say(t("usage.noRuntime"), 3000); return; }
+        invoke("open_usage_window").catch((err) => say(String(err), 4000));
+      } },
+    })),
     section(t("section.demo"), demoBtn),
     section(t("section.buddies"), ...buddies.map(buddyCard), addBtn),
   );
