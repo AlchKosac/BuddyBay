@@ -592,6 +592,10 @@ async function pollInbox() {
     if (!buddy) continue;
     pushChat(buddy.id, "report", m.text, m.ts);
     showReport(buddy, m);
+    // Okno bez fokusu (schovane, v jinem okne): ukaz i Windows toast.
+    if (!document.hasFocus()) {
+      invoke("notify_report", { title: buddy.name, body: m.text.slice(0, 200) }).catch(() => {});
+    }
   }
   storageSet(SEEN_KEY, JSON.stringify(seen.slice(-SEEN_MAX)));
 }

@@ -604,14 +604,85 @@ fn quit_app(app: tauri::AppHandle) {
     app.exit(0);
 }
 
+/// Windows toast pro nove hlaseni od agenta (volano z JS, kdyz okno nema fokus).
+#[tauri::command]
+fn notify_report(app: tauri::AppHandle, title: String, body: String) -> Result<(), String> {
+    use tauri_plugin_notification::NotificationExt;
+    app.notification()
+        .builder()
+        .title(title)
+        .body(body)
+        .show()
+        .map_err(|e| e.to_string())
+}
+
+/// Zobrazi hlavni okno a da mu fokus.
+fn show_main_window(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+    }
+}
+
+/// Ikona v oznamovaci oblasti (tray) s menu: zobrazit, skryt, spotreba, ukoncit.
+fn build_tray(app: &tauri::App) -> tauri::Result<()> {
+    use tauri::menu::{Menu, MenuItem};
+    use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+
+    let show = MenuItem::with_id(app, "show", "Show BuddyBay", true, None::<&str>)?;
+    let hide = MenuItem::with_id(app, "hide", "Hide", true, None::<&str>)?;
+    let usage = MenuItem::with_id(app, "usage", "Token usage", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
+    let menu = Menu::with_items(app, &[&show, &hide, &usage, &quit])?;
+
+    let mut builder = TrayIconBuilder::with_id("main-tray")
+        .tooltip("BuddyBay")
+        .menu(&menu)
+        .show_menu_on_left_click(false)
+        .on_menu_event(|app, event| match event.id.as_ref() {
+            "show" => show_main_window(app),
+            "hide" => {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.hide();
+                }
+            }
+            "usage" => {
+                let handle = app.clone();
+                tauri::async_runtime::spawn(async move {
+                    let _ = open_usage_window(handle).await;
+                });
+            }
+            "quit" => app.exit(0),
+            _ => {}
+        })
+        .on_tray_icon_event(|tray, event| {
+            if let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            } = event
+            {
+                show_main_window(tray.app_handle());
+            }
+        });
+    if let Some(icon) = app.default_window_icon() {
+        builder = builder.icon(icon.clone());
+    }
+    builder.build(app)?;
+    Ok(())
+}
+
 fn main() {
     tauri::Builder::default()
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {
                 place_top_center(&window)?;
             }
+            build_tray(app)?;
             Ok(())
         })
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             ask_agent,
@@ -626,7 +697,8 @@ fn main() {
             place_island,
             open_usage_window,
             take_inbox,
-            inbox_path
+            inbox_path,
+            notify_report
         ])
         .run(tauri::generate_context!())
         .expect("chyba pri spusteni BuddyBay");
