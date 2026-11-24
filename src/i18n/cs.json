@@ -80,6 +80,8 @@
   "section.usage": "Spotřeba tokenů",
   "usage.open": "Otevřít okno se spotřebou",
   "usage.noRuntime": "Vyžaduje běhové prostředí aplikace.",
+  "section.inbox": "Hlášení od agentů",
+  "inbox.hint": "Agenti zapisují JSON soubory do této složky; BuddyBay je zobrazí jako hlášení:",
   "buddy.prompt": "Prompt",
   "buddy.promptTitle": "Prompt pro {name}",
   "buddy.promptHint": "Dodatečné instrukce, které tento buddy dostane s každou zprávou. Základní instrukce BuddyBay platí vždy.",

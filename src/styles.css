@@ -699,3 +699,7 @@ html[data-side="right"] .island.chat-open .bubble { display: none; }
 /* Svisle: chat vedle listy (130 px od okraje), na celou vysku. */
 html[data-side="left"] .chat { top: 0; bottom: 0; left: 130px; right: auto; width: 340px; height: auto; }
 html[data-side="right"] .chat { top: 0; bottom: 0; right: 130px; left: auto; width: 340px; height: auto; }
+
+/* Hlaseni od agenta v historii chatu. */
+.msg.report { align-self: flex-start; background: rgba(242, 184, 75, 0.16); }
+.msg-time { display: block; font-size: 11px; color: var(--muted); margin-bottom: 2px; }

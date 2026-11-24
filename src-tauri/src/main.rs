@@ -346,6 +346,112 @@ fn place_island(
         .map_err(|e| e.to_string())
 }
 
+// --- Inbox: hlaseni od agenta ------------------------------------------------
+// Soubory JSON ve %APPDATA%\BuddyBay\inbox. Aplikace je cte, overi, zobrazi a smaze.
+// Neplatne soubory skonci v podsloze "failed". Format je v docs\inbox.md.
+const INBOX_MAX_FILES: usize = 50;
+const INBOX_MAX_BYTES: u64 = 64 * 1024;
+const INBOX_MIN_AGE_MS: u128 = 1000; // mladsi soubor muze byt jeste rozepsany
+
+fn inbox_dir() -> Result<std::path::PathBuf, String> {
+    let base = std::env::var("APPDATA").map_err(|_| "APPDATA neni nastaveno".to_string())?;
+    let dir = std::path::PathBuf::from(base).join("BuddyBay").join("inbox");
+    std::fs::create_dir_all(dir.join("failed")).map_err(|e| e.to_string())?;
+    Ok(dir)
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InboxMessage {
+    id: String,
+    buddy: String,
+    text: String,
+    mood: String,
+    ts: u64, // epoch v ms
+}
+
+fn str_field(v: &serde_json::Value, key: &str, max: usize) -> Option<String> {
+    v.get(key).and_then(|x| x.as_str()).map(|s| s.chars().take(max).collect())
+}
+
+fn parse_message(bytes: &[u8], file_ts: u64, file_stem: &str) -> Result<InboxMessage, String> {
+    // Windows PowerShell 5 (Set-Content -Encoding utf8) zapisuje BOM, ten se preskoci.
+    let bytes = bytes.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(bytes);
+    let v: serde_json::Value = serde_json::from_slice(bytes).map_err(|e| e.to_string())?;
+    let text = str_field(&v, "text", 2000)
+        .filter(|s| !s.trim().is_empty())
+        .ok_or_else(|| "chybi text".to_string())?;
+    Ok(InboxMessage {
+        id: str_field(&v, "id", 80).unwrap_or_else(|| file_stem.to_string()),
+        buddy: str_field(&v, "buddy", 40).unwrap_or_default(),
+        text,
+        mood: str_field(&v, "mood", 20).unwrap_or_default(),
+        ts: v.get("ts").and_then(|x| x.as_u64()).unwrap_or(file_ts),
+    })
+}
+
+fn move_to_failed(path: &std::path::Path) {
+    if let (Some(dir), Some(name)) = (path.parent(), path.file_name()) {
+        let _ = std::fs::rename(path, dir.join("failed").join(name));
+    }
+}
+
+/// Precte a zpracuje zpravy z inboxu. Platne se smazou, neplatne jdou do "failed".
+#[tauri::command]
+fn take_inbox() -> Result<Vec<InboxMessage>, String> {
+    let dir = inbox_dir()?;
+    let mut entries: Vec<std::fs::DirEntry> = std::fs::read_dir(&dir)
+        .map_err(|e| e.to_string())?
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().extension().map(|x| x == "json").unwrap_or(false))
+        .collect();
+    entries.sort_by_key(|e| e.file_name());
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    let mut out = Vec::new();
+    for entry in entries.into_iter().take(INBOX_MAX_FILES) {
+        let path = entry.path();
+        let meta = match entry.metadata() {
+            Ok(m) => m,
+            Err(_) => continue,
+        };
+        let modified_ms = meta
+            .modified()
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_millis())
+            .unwrap_or(0);
+        if now_ms.saturating_sub(modified_ms) < INBOX_MIN_AGE_MS {
+            continue; // zapisuje se, zkusime priste
+        }
+        if meta.len() > INBOX_MAX_BYTES {
+            move_to_failed(&path);
+            continue;
+        }
+        let bytes = match std::fs::read(&path) {
+            Ok(b) => b,
+            Err(_) => continue,
+        };
+        let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("msg").to_string();
+        match parse_message(&bytes, modified_ms as u64, &stem) {
+            Ok(msg) => {
+                out.push(msg);
+                let _ = std::fs::remove_file(&path);
+            }
+            Err(_) => move_to_failed(&path),
+        }
+    }
+    Ok(out)
+}
+
+/// Cesta k inboxu (pro zobrazeni v nastaveni a pro agenta).
+#[tauri::command]
+fn inbox_path() -> Result<String, String> {
+    Ok(inbox_dir()?.display().to_string())
+}
+
 const AUTOSTART_NAME: &str = "BuddyBay";
 #[cfg(windows)]
 const RUN_KEY: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
@@ -518,7 +624,9 @@ fn main() {
             quit_app,
             check_update,
             place_island,
-            open_usage_window
+            open_usage_window,
+            take_inbox,
+            inbox_path
         ])
         .run(tauri::generate_context!())
         .expect("chyba pri spusteni BuddyBay");

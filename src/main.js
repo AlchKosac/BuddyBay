@@ -505,7 +505,10 @@ function renderChat() {
   const buddy = findBuddy(id);
   chatTitleEl.textContent = buddy ? buddy.name : "";
   const items = chatHistory[id] ?? [];
-  chatLogEl.replaceChildren(...items.map((m) => el("div", { className: `msg ${m.role}`, text: m.text })));
+  chatLogEl.replaceChildren(...items.map((m) => el("div", { className: `msg ${m.role}` }, [
+    ...(m.ts ? [el("span", { className: "msg-time", text: timeLabel(m.ts) })] : []),
+    document.createTextNode(m.text),
+  ])));
   chatLogEl.scrollTop = chatLogEl.scrollHeight;
 }
 
@@ -518,9 +521,85 @@ function syncChat() {
   if (!chatEl.hidden) renderChat();
 }
 
-function pushChat(id, role, text) {
-  (chatHistory[id] ??= []).push({ role, text });
+function pushChat(id, role, text, ts = null) {
+  (chatHistory[id] ??= []).push({ role, text, ts });
+  if (role === "report") saveReport(id, text, ts);
   if (!chatEl.hidden && logBuddyId() === id) renderChat();
+}
+
+/** Cas zpravy: dnes jen HH:MM, jinak den.mesic. HH:MM. */
+function timeLabel(ts) {
+  const d = new Date(ts);
+  const p = (n) => String(n).padStart(2, "0");
+  const hm = `${p(d.getHours())}:${p(d.getMinutes())}`;
+  const today = new Date();
+  const sameDay = d.getFullYear() === today.getFullYear() && d.getMonth() === today.getMonth() && d.getDate() === today.getDate();
+  return sameDay ? hm : `${p(d.getDate())}.${p(d.getMonth() + 1)}. ${hm}`;
+}
+
+// --- Hlaseni od agenta (inbox) ---------------------------------------------------
+// Aplikace cte JSON soubory z %APPDATA%\BuddyBay\inbox (viz docs\inbox.md).
+// Hlaseni se ulozi do historie buddyho (persistentne) a buddy ho ukaze v bublině.
+const REPORTS_KEY = "buddybay.reports";
+const SEEN_KEY = "buddybay.inboxSeen";
+const INBOX_POLL_MS = 2000;
+const REPORTS_MAX = 200;
+const SEEN_MAX = 300;
+
+function loadList(key) {
+  try { return JSON.parse(storageGet(key) ?? "[]") ?? []; } catch (_) { return []; }
+}
+
+function saveReport(buddyId, text, ts) {
+  const list = loadList(REPORTS_KEY);
+  list.push({ buddyId, text, ts });
+  storageSet(REPORTS_KEY, JSON.stringify(list.slice(-REPORTS_MAX)));
+}
+
+/** Pri startu nacte ulozena hlaseni do historie chatu. */
+function loadReportsIntoChat() {
+  for (const r of loadList(REPORTS_KEY)) {
+    (chatHistory[r.buddyId] ??= []).push({ role: "report", text: r.text, ts: r.ts });
+  }
+}
+
+function findBuddyByName(name) {
+  const n = String(name || "").trim().toLowerCase();
+  if (!n) return null;
+  return buddies.find((b) => b.name.trim().toLowerCase() === n) ?? null;
+}
+
+function showReport(buddy, m) {
+  const mood = PETS[buddy.petId].states[m.mood] ? m.mood : "waving";
+  revealIsland();
+  setPetState(mood, buddy.id);
+  say(`${buddy.name}: ${m.text}`, 12000);
+  setTimeout(() => setPetState("idle", buddy.id), 8000);
+}
+
+async function pollInbox() {
+  if (!invoke) return;
+  let msgs;
+  try { msgs = await invoke("take_inbox"); } catch (_) { return; }
+  if (!Array.isArray(msgs) || msgs.length === 0) return;
+  const seen = loadList(SEEN_KEY);
+  const seenSet = new Set(seen);
+  for (const m of msgs) {
+    if (seenSet.has(m.id)) continue;
+    seenSet.add(m.id);
+    seen.push(m.id);
+    const buddy = findBuddyByName(m.buddy) ?? activeBuddies()[0] ?? null;
+    if (!buddy) continue;
+    pushChat(buddy.id, "report", m.text, m.ts);
+    showReport(buddy, m);
+  }
+  storageSet(SEEN_KEY, JSON.stringify(seen.slice(-SEEN_MAX)));
+}
+
+function startInbox() {
+  loadReportsIntoChat();
+  pollInbox();
+  setInterval(pollInbox, INBOX_POLL_MS);
 }
 
 function openChat(id) {
@@ -933,6 +1012,12 @@ function placementPicker() {
   return monitor;
 }
 
+// Cesta k inboxu pro zobrazeni v nastaveni (nacte se jednou).
+let inboxPathText = "";
+if (window.__TAURI__?.core?.invoke) {
+  window.__TAURI__.core.invoke("inbox_path").then((p) => { inboxPathText = p; }).catch(() => {});
+}
+
 function renderSettings() {
   if (promptEditorId) {
     const pb = findBuddy(promptEditorId);
@@ -1059,6 +1144,10 @@ function renderSettings() {
       el("label", { className: "check" }, [autoHideBox, el("span", { text: t("island.autohide") })]),
       el("label", { className: "check" }, [buddyOnlyBox, el("span", { text: t("island.buddyOnly") })]),
       el("div", { className: "settings-row-inline" }, [scaleSlider, scaleLabel, uiResetBtn]),
+    ),
+    section(t("section.inbox"),
+      el("span", { className: "ts", text: t("inbox.hint") }),
+      el("span", { className: "ts", text: inboxPathText }),
     ),
     section(t("section.usage"), el("button", {
       type: "button", text: t("usage.open"),
@@ -1375,6 +1464,7 @@ window.addEventListener("keydown", (e) => {
 // --- Start -------------------------------------------------------------------
 function startApp() {
   applyStaticTexts();
+  startInbox();
   document.documentElement.dataset.side = currentSide();
   document.documentElement.toggleAttribute("data-buddyonly", buddyOnly());
   applyTermSize();

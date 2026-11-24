@@ -80,6 +80,8 @@
   "section.usage": "Token usage",
   "usage.open": "Open token usage window",
   "usage.noRuntime": "Needs the app runtime.",
+  "section.inbox": "Reports from agents",
+  "inbox.hint": "Agents write JSON files into this folder; BuddyBay shows them as reports:",
   "buddy.prompt": "Prompt",
   "buddy.promptTitle": "Prompt for {name}",
   "buddy.promptHint": "Extra instructions sent with every message to this buddy. The base BuddyBay instructions always apply.",
